@@ -122,6 +122,13 @@ class RetrieveEstablishmentSerializer(ModelSerializer):
         except Exception as e:
             print(f"Error getting images: {str(e)}")
             return []
+    
+    def get_parcels(self, establishment):
+        return ParcelBasicSerializer(
+            establishment.parcels.all(), 
+            many=True,
+            context=self.context
+        ).data
 
 
 class EstablishmentSeriesSerializer(serializers.Serializer):
