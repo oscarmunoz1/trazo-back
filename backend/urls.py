@@ -17,6 +17,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from common.views import health_check
 
 
 urlpatterns = [
@@ -32,6 +33,7 @@ urlpatterns = [
     path("", include("product.urls")),
     path("", include("history.urls")),
     path("", include("reviews.urls")),
+    path('health/', health_check, name='health_check'),
 ]
 
 if settings.DEBUG:

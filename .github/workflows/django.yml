@@ -64,7 +64,7 @@ jobs:
       DATABASE_PORT: "5432"
       ALLOWED_HOSTS: "*"
       DEBUG: True
-      BASE_TRACEIT_URL: http://localhost:3000/
+      BASE_TRAZO_URL: http://localhost:3000/
       BASE_APP_URL: http://app.localhost:3000/
       BASE_CONSUMER_URL: http://consumer.localhost:3000/
       EMAIL_HOST: "smtp.sendgrid.net"

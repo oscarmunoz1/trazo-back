@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "traceit-back"
+name = "trazo-back"
 version = "0.1.0"
 description = ""
 authors = ["Oscar Muñoz <osmunogue@gmail.com>"]

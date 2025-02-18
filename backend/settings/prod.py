@@ -4,7 +4,10 @@ from backend.settings.base import *
 from decouple import config
 
 
-ALLOWED_HOSTS = ["api.trazo.io"]
+ALLOWED_HOSTS = [
+    "api.trazo.io",
+    os.environ.get("LOAD_BALANCER_DNS", "localhost")
+]
 
 
 CSRF_TRUSTED_ORIGINS = [
@@ -29,9 +32,9 @@ EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 SERVER_EMAIL = os.environ.get("FROM_EMAIL_ADDRESS", "info@trazo.io")
 DEFAULT_FROM_EMAIL = config("FROM_EMAIL_ADDRESS", "info@trazo.io")
 
-SENDGRID_API_KEY = config("SENDGRID_API_KEY")
+SENDGRID_API_KEY = config("SENDGRID_API_KEY", default=None)
 
-EMAIL_HOST = config("EMAIL_HOST")
+EMAIL_HOST = config("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_HOST_PASSWORD = SENDGRID_API_KEY
 EMAIL_PORT = os.environ.get("EMAIL_PORT", 587)
 EMAIL_USE_TLS = False if os.environ.get("EMAIL_DISABLE_TLS") == "True" else True

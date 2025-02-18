@@ -23,10 +23,11 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
-BASE_TRACEIT_URL = config("BASE_TRACEIT_URL")
+BASE_TRAZO_URL = config("BASE_TRAZO_URL", default="http://localhost:3000/")
 
-BASE_APP_URL = config("BASE_APP_URL")
-BASE_CONSUMER_URL = config("BASE_CONSUMER_URL")
+BASE_APP_URL = config("BASE_APP_URL", default="http://app.localhost:3000/")
+BASE_CONSUMER_URL = config("BASE_CONSUMER_URL", default="http://consumer.localhost:3000/")
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="http://localhost:3000").split(",")
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = config("SECRET_KEY")
@@ -35,8 +36,6 @@ SECRET_KEY = config("SECRET_KEY")
 DEBUG = config("DEBUG", default=False, cast=bool)
 
 ALLOWED_HOSTS = [config("ALLOWED_HOSTS")]
-
-CSRF_TRUSTED_ORIGINS = [config("CSRF_TRUSTED_ORIGINS")]
 
 # Application definition
 
@@ -110,34 +109,40 @@ GEOIP_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent, "geoip_
 
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
+print("Connecting to database:")
+print(config("DATABASE_HOST", default="localhost"))
+print(config("DATABASE_PORT", default=5432))
+print(config("DATABASE_NAME", default="postgres"))
+print(config("DATABASE_USER", default="postgres"))
+print(config("DATABASE_PASSWORD", default="postgres"))
 
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": config("DATABASE_NAME"),
-        "USER": config("DATABASE_USER"),
-        "PASSWORD": config("DATABASE_PASSWORD"),
-        "HOST": config("DATABASE_HOST"),
-        "PORT": config("DATABASE_PORT"),
+        "NAME": config("DATABASE_NAME", default="postgres"),
+        "USER": config("DATABASE_USER", default="postgres"),
+        "PASSWORD": config("DATABASE_PASSWORD", default="postgres"),
+        "HOST": config("DATABASE_HOST", default="localhost"),
+        "PORT": config("DATABASE_PORT", default=5432),
     }
 }
 
 # Celery configuration
 CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND = "rediss://" + config('REDIS_ENDPOINT', default='localhost:6379') + "/0"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 CELERY_IMPORTS = ("tasks",)
 
-EMAIL_HOST = config("EMAIL_HOST")
+EMAIL_HOST = config("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_HOST_USER = "apikey"
-EMAIL_HOST_PASSWORD = config("SENDGRID_API_KEY")
+EMAIL_HOST_PASSWORD = config("SENDGRID_API_KEY", default=None)
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-BASE_URL = config("BASE_URL")
+BASE_URL = config("BASE_URL", default="http://localhost:8000/")
 
 # Common storage settings
 MEDIA_URL = '/media/'

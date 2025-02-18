@@ -1,112 +1,149 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-<html data-editor-version="2" class="sg-campaigns" xmlns="http://www.w3.org/1999/xhtml">
-    <head>
-      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1">
-      <meta http-equiv="X-UA-Compatible" content="IE=Edge">
+<html
+  data-editor-version="2"
+  class="sg-campaigns"
+  xmlns="http://www.w3.org/1999/xhtml"
+>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1"
+    />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
 
-      
-
-      <style type="text/css">
-
-     
-    body, p, div {
-      font-family: arial,helvetica,sans-serif;
-      font-size: 14px;
-    }
-    body {
-      color: #000000;
-    }
-    body a {
-      color: rgb(30, 116, 183);
-      text-decoration: none;
-    }
-    p { margin: 0; padding: 0; }
-    
-    @media screen and (max-width:480px) {
-      .preheader .rightColumnContent,
-      .footer .rightColumnContent {
-        text-align: left !important;
+    <style type="text/css">
+      body,
+      p,
+      div {
+        font-family: arial, helvetica, sans-serif;
+        font-size: 14px;
       }
-      .preheader .rightColumnContent div,
-      .preheader .rightColumnContent span,
-      .footer .rightColumnContent div,
-      .footer .rightColumnContent span {
-        text-align: left !important;
+      body {
+        color: #000000;
       }
-      .preheader .rightColumnContent,
-      .preheader .leftColumnContent {
-        font-size: 80% !important;
-        padding: 5px 0;
+      body a {
+        color: rgb(30, 116, 183);
+        text-decoration: none;
       }
-      table.wrapper-mobile {
-        width: 100% !important;
-        table-layout: fixed;
+      p {
+        margin: 0;
+        padding: 0;
       }
-      img.max-width {
-        height: auto !important;
-        max-width: 100% !important;
+
+      @media screen and (max-width: 480px) {
+        .preheader .rightColumnContent,
+        .footer .rightColumnContent {
+          text-align: left !important;
+        }
+        .preheader .rightColumnContent div,
+        .preheader .rightColumnContent span,
+        .footer .rightColumnContent div,
+        .footer .rightColumnContent span {
+          text-align: left !important;
+        }
+        .preheader .rightColumnContent,
+        .preheader .leftColumnContent {
+          font-size: 80% !important;
+          padding: 5px 0;
+        }
+        table.wrapper-mobile {
+          width: 100% !important;
+          table-layout: fixed;
+        }
+        img.max-width {
+          height: auto !important;
+          max-width: 100% !important;
+        }
+        a.bulletproof-button {
+          display: block !important;
+          width: auto !important;
+          font-size: 80%;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+        .columns {
+          width: 100% !important;
+        }
+        .column {
+          display: block !important;
+          width: 100% !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+          margin-left: 0 !important;
+          margin-right: 0 !important;
+        }
+        .social-icon-column {
+          display: inline-block !important;
+        }
       }
-      a.bulletproof-button {
-        display: block !important;
-        width: auto !important;
-        font-size: 80%;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+    </style>
+
+    <!--user entered Head Start-->
+    <!--End Head user entered-->
+  </head>
+  <body>
+    <!-- <center class="wrapper" data-link-color="#1188E6" data-body-style="font-size:14px; font-family:arial,helvetica,sans-serif; color:#000000; background-color:#E8ECF2;"> -->
+    <div class="webkit">
+      <div>
+        <p>Hi {{ username }},</p>
+
+        <p>Welcome to trazo.</p>
+
+        <p>
+          Help us secure your trazo account by verifying your email address ({{
+          email }}). This lets you access all of trazo's features.
+        </p>
+
+        <p>
+          Click the button below to verify your email address and activate your
+          account:
+        </p>
+
+        <button
+          id="verifyButton"
+          onclick="navigate();"
+          class="bulletproof-button"
+          type="button"
+          style="
+            background-color: #1b8924;
+            cursor: pointer;
+            border: 1px solid #0f6625;
+            border-radius: 4px;
+            color: #ffffff;
+            display: inline-block;
+            font-family: arial, helvetica, sans-serif;
+            font-size: 14px;
+            font-weight: normal;
+            line-height: 2;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            mso-hide: all;
+          "
+        >
+          Verify Email Address
+        </button>
+
+        <p>If you cannot see the button, please use the following link:</p>
+
+        <a href="{{link}}" target="_blank">{{ link }}</a>
+
+        <p>Thank you for using our application!</p>
+
+        <p>Regards,</p>
+
+        <p>trazo Team</p>
+      </div>
+    </div>
+    <!-- </center> -->
+    <script>
+      function navigate() {
+        var url = "{{ link }}";
+
+        // Navigate to the generated URL
+        window.location.href = url;
       }
-      .columns {
-        width: 100% !important;
-      }
-      .column {
-        display: block !important;
-        width: 100% !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-      }
-      .social-icon-column {
-        display: inline-block !important;
-      }
-    }
-  </style>
-  
-      <!--user entered Head Start--><!--End Head user entered-->
-    </head>
-    <body>
-    
-      <!-- <center class="wrapper" data-link-color="#1188E6" data-body-style="font-size:14px; font-family:arial,helvetica,sans-serif; color:#000000; background-color:#E8ECF2;"> -->
-        <div class="webkit">
-          <div>
-            <p>Hi {{ username }},</p>
-
-            <p>Welcome to traceit.</p>
-
-            <p>Help us secure your traceit account by verifying your email address ({{ email }}). This lets you access all of traceit's features.</p>
-
-            <p>Click the button below to verify your email address and activate your account:</p>
-
-            <button id="verifyButton" onclick="navigate();" class="bulletproof-button" type="button" style="background-color: #1b8924; cursor: pointer; border: 1px solid #0f6625; border-radius: 4px; color: #ffffff; display: inline-block; font-family: arial,helvetica,sans-serif; font-size: 14px; font-weight: normal; line-height: 2; padding: 10px 20px; text-align: center; text-decoration: none; mso-hide: all;">Verify Email Address</button>
-
-            <p>If you cannot see the button, please use the following link:</p>
-
-            <a href="{{link}}" target="_blank">{{ link }}</a>
-
-            <p>Thank you for using our application!</p>
-
-            <p>Regards,</p>
-
-            <p>traceit Team</p>
-          </div>
-        </div>
-      <!-- </center> -->
-      <script>
-        function navigate () {
-            var url = "{{ link }}";
-    
-            // Navigate to the generated URL
-            window.location.href = url;
-        };
-      </script>
-    </body>
-  </html>
+    </script>
+  </body>
+</html>

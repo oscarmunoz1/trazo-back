@@ -10,42 +10,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: 3.9
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install poetry
-        poetry install
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+          poetry install
 
-    # - name: Run tests
-    #   run: |
-    #     poetry run pytest
+      # - name: Run tests
+      #   run: |
+      #     poetry run pytest
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-east-2
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
 
-    - name: Deploy to EC2
-      env:
-        PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-        HOST: ${{ secrets.EC2_HOST }}
-        USER: ${{ secrets.EC2_USER }}
-      run: |
-        echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
-        scp -i private_key -o StrictHostKeyChecking=no -r ./* ${USER}@${HOST}:traceit-back
-        ssh -i private_key -o StrictHostKeyChecking=no ${USER}@${HOST} '
-          cd traceit-back &&
-          poetry install &&
-          poetry run python manage.py migrate &&
-          sudo systemctl restart gunicorn
-        '
+      - name: Deploy to EC2
+        env:
+          PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ${{ secrets.EC2_USER }}
+        run: |
+          echo "$PRIVATE_KEY" > private_key && chmod 600 private_key
+          scp -i private_key -o StrictHostKeyChecking=no -r ./* ${USER}@${HOST}:trazo-back
+          ssh -i private_key -o StrictHostKeyChecking=no ${USER}@${HOST} '
+            cd trazo-back &&
+            poetry install &&
+            poetry run python manage.py migrate &&
+            sudo systemctl restart gunicorn
+          '
