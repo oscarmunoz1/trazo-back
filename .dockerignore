@@ -3,4 +3,5 @@
 .env
 *.pyc
 __pycache__
-infrastructure/ 
+terraform/
+!.env.build 

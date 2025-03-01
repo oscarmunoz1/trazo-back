@@ -20,21 +20,13 @@ def health_check(request):
         db_healthy = False
         logger.error("Database connection failed: " + str(e))
 
-    # Check Redis connection
-    redis_healthy = True
-    try:
-        redis_client = Redis.from_url(connections.settings.CELERY_RESULT_BACKEND)
-        redis_client.ping()
-    except (RedisError, Exception) as e:
-        redis_healthy = False
-        logger.error("Redis connection failed: " + str(e))
 
-    status = 200 if (db_healthy and redis_healthy) else 503
+
+    status = 200 if (db_healthy) else 503
     
     response = {
         "status": "healthy" if status == 200 else "unhealthy",
         "database": "connected" if db_healthy else "disconnected",
-        "redis": "connected" if redis_healthy else "disconnected",
         "timestamp": datetime.datetime.utcnow().isoformat()
     }
     
