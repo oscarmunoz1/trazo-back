@@ -13,10 +13,11 @@ variable "database_host" {
   type        = string
 }
 
-variable "redis_endpoint" {
-  description = "Redis endpoint"
-  type        = string
-}
+# Comment out or remove the Redis endpoint variable
+# variable "redis_endpoint" {
+#   description = "Redis endpoint"
+#   type        = string
+# }
 
 variable "ecs_execution_role_arn" {
   description = "ARN of the ECS execution role"

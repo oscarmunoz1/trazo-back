@@ -88,30 +88,27 @@ resource "aws_security_group" "rds" {
   }
 }
 
-resource "aws_security_group" "redis" {
-  name        = "${var.environment}-redis-security-group"
-  description = "Redis Security Group"
-  vpc_id      = var.vpc_id
-
-  ingress {
-    protocol        = "tcp"
-    from_port       = 6379
-    to_port         = 6379
-    security_groups = [aws_security_group.ecs_tasks.id]
-  }
-
-  egress {
-    protocol    = "-1"
-    from_port   = 0
-    to_port     = 0
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  tags = {
-    Name = "${var.environment}-redis-security-group"
-  }
-} 
+# Comment out or remove Redis security group if it exists
+# resource "aws_security_group" "redis" {
+#   name        = "${var.environment}-redis-sg"
+#   description = "Security group for Redis"
+#   vpc_id      = var.vpc_id
+#   
+#   ingress {
+#     from_port       = 6379
+#     to_port         = 6379
+#     protocol        = "tcp"
+#     security_groups = [var.ecs_security_group_id]
+#   }
+#   
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+#   
+#   tags = {
+#     Name = "${var.environment}-redis-sg"
+#   }
+# } 

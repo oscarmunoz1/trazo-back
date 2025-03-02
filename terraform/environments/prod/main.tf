@@ -172,14 +172,15 @@ module "rds" {
   instance_class    = "db.t3.micro"
 }
 
-module "redis" {
-  source = "../../modules/redis"
-  
-  environment            = "prod"
-  private_subnet_ids    = module.networking.private_subnet_ids
-  redis_security_group_id = module.security.redis_security_group_id
-  node_type             = "cache.t3.micro"
-}
+# Comment out or remove the Redis module completely
+# module "redis" {
+#   source = "../../modules/redis"
+#   
+#   environment            = "prod"
+#   private_subnet_ids    = module.networking.private_subnet_ids
+#   redis_security_group_id = module.security.redis_security_group_id
+#   node_type             = "cache.t3.micro"
+# }
 
 module "ecs" {
   source = "../../modules/ecs"
@@ -189,7 +190,8 @@ module "ecs" {
   aws_region = "us-east-2"
   
   database_host = module.rds.endpoint
-  redis_endpoint = module.redis.redis_endpoint
+  # Comment out this line to match the commented out variable in the module
+  # redis_endpoint = module.redis.redis_endpoint
   
   ecs_exec_role_arn = aws_iam_role.ecs_execution_role.arn
   ecs_execution_role_arn = aws_iam_role.ecs_execution_role.arn

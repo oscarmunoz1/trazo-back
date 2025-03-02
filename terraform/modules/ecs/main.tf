@@ -29,7 +29,6 @@ resource "aws_ecs_task_definition" "django" {
         { name = "ALLOWED_HOSTS", value = "api.trazo.io,${var.alb_dns_name}" },
         { name = "AWS_S3_REGION_NAME", value = var.aws_region },
         { name = "DATABASE_PORT", value = "5432" },
-        { name = "REDIS_ENDPOINT", value = "redis://${var.redis_endpoint}" },
         { name = "AWS_STORAGE_BUCKET_NAME", value = var.s3_bucket_name },
         { name = "AWS_S3_CUSTOM_DOMAIN", value = var.cloudfront_domain },
         { name = "STATIC_URL", value = "https://static.${var.domain_name}/" }
