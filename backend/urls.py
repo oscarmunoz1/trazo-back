@@ -33,7 +33,7 @@ urlpatterns = [
     path("", include("product.urls")),
     path("", include("history.urls")),
     path("", include("reviews.urls")),
-    path('health/', health_check, name='health_check'),
+    path("", include("common.urls")),
 ]
 
 if settings.DEBUG:

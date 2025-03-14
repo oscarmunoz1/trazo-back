@@ -59,6 +59,7 @@ class EstablishmentSerializer(ModelSerializer):
 
 class UpdateEstablishmentSerializer(ModelSerializer):
     album = GallerySerializer(required=False)
+    s3_keys = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
 
     class Meta:
         model = Establishment
@@ -72,14 +73,27 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "company",
             "description",
             "country",
+            "s3_keys",
         )
 
     def to_representation(self, instance):
         return EstablishmentSerializer(instance).data
 
     def update(self, instance, validated_data):
+        s3_keys = validated_data.pop('s3_keys', None)
         album_data = self.context.get("request").FILES
-        if album_data:
+        
+        if s3_keys:
+            gallery = instance.album
+            if gallery is None:
+                gallery = Gallery.objects.create()
+            
+            for s3_key in s3_keys:
+                gallery_image = gallery.images.create(s3_key=s3_key)
+                gallery_image.save()
+            
+            validated_data["album"] = gallery
+        elif album_data:
             gallery = instance.album
             if gallery is None:
                 gallery = Gallery.objects.create()
@@ -87,16 +101,28 @@ class UpdateEstablishmentSerializer(ModelSerializer):
                 gallery_image = gallery.images.create(image=image_data)
                 gallery_image.save()
             validated_data["album"] = gallery
+            
         return super().update(instance, validated_data)
 
     def create(self, validated_data):
+        s3_keys = validated_data.pop('s3_keys', None)
         album_data = self.context.get("request").FILES
-        if album_data:
+        
+        if s3_keys:
+            gallery = Gallery.objects.create()
+            
+            for s3_key in s3_keys:
+                gallery_image = gallery.images.create(s3_key=s3_key)
+                gallery_image.save()
+            
+            validated_data["album"] = gallery
+        elif album_data:
             gallery = Gallery.objects.create()
             for image_data in album_data.getlist("album[images]"):
                 gallery_image = gallery.images.create(image=image_data)
                 gallery_image.save()
             validated_data["album"] = gallery
+            
         return super().create(validated_data)
 
 

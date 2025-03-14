@@ -170,6 +170,7 @@ module "rds" {
   database_user     = "trazo_admin"
   database_password = var.database_password
   instance_class    = "db.t3.micro"
+  aws_region        = "us-east-2"
 }
 
 # Comment out or remove the Redis module completely
@@ -356,7 +357,9 @@ resource "aws_iam_policy" "terraform_full_access" {
           "iam:PassRole",
           "route53:*",
           "acm:*",
-          "cloudfront:*"
+          "cloudfront:*",
+          "events:*",
+          "lambda:*"
         ]
         Resource = "*"
       }

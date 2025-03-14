@@ -202,6 +202,8 @@ resource "aws_route_table_association" "private" {
 # Add this data source at the top of the file
 data "aws_caller_identity" "current" {}
 
+# Comment out these Interface endpoints
+/*
 resource "aws_vpc_endpoint" "secretsmanager" {
   vpc_id            = aws_vpc.main.id
   service_name      = "com.amazonaws.${var.aws_region}.secretsmanager"
@@ -256,14 +258,6 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 }
 
-# Add S3 Gateway Endpoint (ECR uses S3 for layer storage)
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.aws_region}.s3"
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = [aws_route_table.private.id]
-}
-
 # Add CloudWatch Logs Endpoint (for Container Logs)
 resource "aws_vpc_endpoint" "logs" {
   vpc_id            = aws_vpc.main.id
@@ -272,4 +266,13 @@ resource "aws_vpc_endpoint" "logs" {
   subnet_ids        = aws_subnet.private[*].id
   security_group_ids = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
+}
+*/
+
+# Keep only the S3 Gateway endpoint (free)
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_route_table.private.id]
 } 
