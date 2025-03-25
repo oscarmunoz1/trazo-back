@@ -2,7 +2,7 @@ resource "aws_s3_bucket" "terraform_state" {
   bucket = "trazo-terraform-state"
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 }
 

@@ -72,7 +72,7 @@ resource "aws_route_table" "private" {
 # Add NAT Instance
 resource "aws_instance" "nat" {
   ami                    = "ami-0fa399d9c130ec923" # Amazon Linux 2 NAT AMI for us-east-2
-  instance_type          = "t3.nano"               # Changed from t4g.nano to t3.nano for x86_64 compatibility
+  instance_type          = "t3.nano"               # HIBERNATION: Changed to t3.nano (x86_64) instead of t4g.nano (arm64)
   subnet_id              = aws_subnet.public[0].id
   vpc_security_group_ids = [aws_security_group.nat.id]
   source_dest_check      = false                   # Required for NAT functionality
@@ -275,4 +275,14 @@ resource "aws_vpc_endpoint" "s3" {
   service_name      = "com.amazonaws.${var.aws_region}.s3"
   vpc_endpoint_type = "Gateway"
   route_table_ids   = [aws_route_table.private.id]
-} 
+}
+
+# HIBERNATION: Optional - If you want to release the Elastic IP to save $3.60/month
+# Comment out or remove the Elastic IP association
+# RESTORE ACTION: Uncomment this block
+/*
+resource "aws_eip_association" "nat" {
+  instance_id   = aws_instance.nat.id
+  allocation_id = aws_eip.nat.id
+}
+*/ 

@@ -67,7 +67,8 @@ resource "aws_ecs_service" "django" {
   name                   = "${var.environment}-django"
   cluster               = aws_ecs_cluster.main.id
   task_definition       = aws_ecs_task_definition.django.arn
-  desired_count         = 1
+  desired_count         = 0  # HIBERNATION: Set to 0 to stop all tasks
+                            # RESTORE VALUE: desired_count = 1
   force_new_deployment = true
   
   health_check_grace_period_seconds = 60
@@ -102,8 +103,11 @@ resource "aws_ecs_service" "django" {
 }
 
 resource "aws_appautoscaling_target" "ecs_target" {
-  max_capacity       = 1
-  min_capacity       = 0
+  max_capacity = 0  # HIBERNATION: Set to 0
+  min_capacity = 0  # HIBERNATION: Set to 0
+  # RESTORE VALUES:
+  # max_capacity = 1
+  # min_capacity = 1
   resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.django.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"

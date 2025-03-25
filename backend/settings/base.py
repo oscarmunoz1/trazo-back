@@ -109,12 +109,6 @@ GEOIP_PATH = os.path.join(Path(__file__).resolve().parent.parent.parent, "geoip_
 
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
-print("Connecting to database:")
-print(config("DATABASE_HOST", default="localhost"))
-print(config("DATABASE_PORT", default=5432))
-print(config("DATABASE_NAME", default="postgres"))
-print(config("DATABASE_USER", default="postgres"))
-print(config("DATABASE_PASSWORD", default="postgres"))
 
 DATABASES = {
     "default": {
