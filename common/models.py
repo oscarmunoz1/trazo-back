@@ -1,7 +1,5 @@
 from django.db import models
-
-# Create your models here.
-
+from django.conf import settings
 
 class Gallery(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -14,6 +12,7 @@ class GalleryImage(models.Model):
     )
     image = models.ImageField(upload_to="gallery_images/", blank=True, null=True)
     s3_key = models.CharField(max_length=255, blank=True, null=True)
+    image_url = models.URLField(max_length=1000, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -24,6 +23,8 @@ class GalleryImage(models.Model):
     def url(self):
         if self.s3_key:
             return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{self.s3_key}"
+        elif self.image_url:
+            return self.image_url
         elif self.image:
             return self.image.url
         return None

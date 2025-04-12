@@ -6,6 +6,7 @@ from smtplib import SMTPException
 import logging
 from .utils import send_invitation_to_user
 from .constants import PRODUCER, CONSUMER
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -21,14 +22,18 @@ def generate_verification_code(length=6):
 @receiver(post_save, sender=User)
 def create_verification_code(sender, instance, created, **kwargs):
     if created:
-        code = generate_verification_code()  # generate a random code
+        code = generate_verification_code()
         VerificationCode.objects.create(user=instance, code=code)
+        
+        # Properly encode the email for URLs
+        encoded_email = quote(instance.email)
+        
         verification_link = ""
         user_type = int(instance.user_type)
         if user_type == PRODUCER:
-            verification_link = f"{settings.BASE_APP_URL}auth/verifyemail?email={instance.email}&code={code}"
+            verification_link = f"{settings.BASE_APP_URL}auth/verifyemail?email={encoded_email}&code={code}"
         elif user_type == CONSUMER:
-            verification_link = f"{settings.BASE_CONSUMER_URL}auth/verifyemail?email={instance.email}&code={code}"
+            verification_link = f"{settings.BASE_CONSUMER_URL}auth/verifyemail?email={encoded_email}&code={code}"
 
         # send verification code to user
         try:

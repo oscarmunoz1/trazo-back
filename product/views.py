@@ -13,12 +13,14 @@ from rest_framework.response import Response
 from backend.permissions import CompanyNestedViewSet
 from rest_framework.parsers import MultiPartParser, FormParser, FileUploadParser
 from common.models import GalleryImage, Gallery
-
+from subscriptions.permissions import HasParcelCreationPermission
+from rest_framework.permissions import IsAuthenticated
 
 class ParcelViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
     queryset = Parcel.objects.all()
     filter_backends = [filters.OrderingFilter]
     parser_classes = (MultiPartParser, FormParser)
+    permission_classes = [IsAuthenticated, HasParcelCreationPermission]
 
     def get_serializer_class(self):
         if (

@@ -37,6 +37,13 @@ class User(AbstractUser):
 
     def get_full_name(self):
         return self.first_name + " " + self.last_name
+    
+    def get_active_company(self):
+        # Check for active or trialing subscriptions
+        return self.companies.filter(subscription__status__in=["active", "trialing"]).first()
+
+    def get_trial_company(self):
+        return self.companies.filter(subscription__status="trialing").first()
 
 
 class WorksIn(models.Model):

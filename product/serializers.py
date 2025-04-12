@@ -41,14 +41,19 @@ class ParcelBasicSerializer(ModelSerializer):
             if not parcel.album or not parcel.album.images.exists():
                 return None
             
-            image = parcel.album.images.first().image
-            if not image:
+            image_obj = parcel.album.images.first()
+            if not image_obj:
+                return None
+                
+            # Use the url property which handles image, image_url, and s3_key
+            image_url = image_obj.url
+            if not image_url:
                 return None
 
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(image.url)
-            return image.url
+            if request and not image_url.startswith(('http://', 'https://')):
+                return request.build_absolute_uri(image_url)
+            return image_url
         except Exception as e:
             print(f"Error getting image: {str(e)}")
             return None
@@ -84,14 +89,19 @@ class RetrieveParcelSerializer(ModelSerializer):
             if not parcel.album or not parcel.album.images.exists():
                 return None
             
-            image = parcel.album.images.first().image
-            if not image:
+            image_obj = parcel.album.images.first()
+            if not image_obj:
+                return None
+                
+            # Use the url property which handles image, image_url, and s3_key
+            image_url = image_obj.url
+            if not image_url:
                 return None
 
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(image.url)
-            return image.url
+            if request and not image_url.startswith(('http://', 'https://')):
+                return request.build_absolute_uri(image_url)
+            return image_url
         except Exception as e:
             print(f"Error getting image: {str(e)}")
             return None
@@ -102,11 +112,16 @@ class RetrieveParcelSerializer(ModelSerializer):
                 return []
             
             request = self.context.get('request')
-            return [
-                request.build_absolute_uri(image.image.url) if request else image.image.url
-                for image in parcel.album.images.all()
-                if image.image is not None
-            ]
+            image_list = []
+            
+            for image_obj in parcel.album.images.all():
+                image_url = image_obj.url
+                if image_url:
+                    if request and not image_url.startswith(('http://', 'https://')):
+                        image_url = request.build_absolute_uri(image_url)
+                    image_list.append(image_url)
+            
+            return image_list
         except Exception as e:
             print(f"Error getting images: {str(e)}")
             return []
@@ -119,6 +134,8 @@ class CreateParcelSerializer(ModelSerializer):
     product = serializers.SerializerMethodField()
     album = GallerySerializer(required=False)
     image = serializers.SerializerMethodField()
+    uploaded_image_urls = serializers.ListField(child=serializers.URLField(), required=False, write_only=True)
+    s3_keys = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
 
     class Meta:
         model = Parcel
@@ -128,25 +145,68 @@ class CreateParcelSerializer(ModelSerializer):
         return None
 
     def update(self, instance, validated_data):
+        s3_keys = validated_data.pop('s3_keys', None)
+        uploaded_image_urls = validated_data.pop('uploaded_image_urls', None)
         album_data = self.context.get("request").FILES
-        if album_data:
-            gallery = instance.album
-            if gallery is None:
-                gallery = Gallery.objects.create()
+        
+        # Create or get the gallery
+        gallery = instance.album
+        if gallery is None:
+            gallery = Gallery.objects.create()
+        
+        # Handle S3 keys from production environment
+        if s3_keys:
+            for s3_key in s3_keys:
+                gallery_image = gallery.images.create(s3_key=s3_key)
+                gallery_image.save()
+            validated_data["album"] = gallery
+        
+        # Handle uploaded image URLs (for both environments)
+        elif uploaded_image_urls:
+            for url in uploaded_image_urls:
+                if url and isinstance(url, str) and url.startswith('http'):
+                    gallery_image = gallery.images.create(image_url=url)
+                    gallery_image.save()
+            validated_data["album"] = gallery
+        
+        # Handle direct file uploads from form (development environment)
+        elif album_data:
             for image_data in album_data.getlist("album[images]"):
                 gallery_image = gallery.images.create(image=image_data)
                 gallery_image.save()
             validated_data["album"] = gallery
+            
         return super().update(instance, validated_data)
 
     def create(self, validated_data):
+        s3_keys = validated_data.pop('s3_keys', None)
+        uploaded_image_urls = validated_data.pop('uploaded_image_urls', None)
         album_data = self.context.get("request").FILES
-        if album_data:
+        
+        if s3_keys:
+            gallery = Gallery.objects.create()
+            
+            for s3_key in s3_keys:
+                gallery_image = gallery.images.create(s3_key=s3_key)
+                gallery_image.save()
+            
+            validated_data["album"] = gallery
+        elif uploaded_image_urls:
+            gallery = Gallery.objects.create()
+            
+            for url in uploaded_image_urls:
+                if url and isinstance(url, str) and url.startswith('http'):
+                    gallery_image = gallery.images.create(image_url=url)
+                    gallery_image.save()
+            
+            validated_data["album"] = gallery
+        elif album_data:
             gallery = Gallery.objects.create()
             for image_data in album_data.getlist("album[images]"):
                 gallery_image = gallery.images.create(image=image_data)
                 gallery_image.save()
             validated_data["album"] = gallery
+            
         return super().create(validated_data)
 
     def get_image(self, parcel):
@@ -154,14 +214,19 @@ class CreateParcelSerializer(ModelSerializer):
             if not parcel.album or not parcel.album.images.exists():
                 return None
             
-            image = parcel.album.images.first().image
-            if not image:
+            image_obj = parcel.album.images.first()
+            if not image_obj:
+                return None
+                
+            # Use the url property which handles image, image_url, and s3_key
+            image_url = image_obj.url
+            if not image_url:
                 return None
 
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(image.url)
-            return image.url
+            if request and not image_url.startswith(('http://', 'https://')):
+                return request.build_absolute_uri(image_url)
+            return image_url
         except Exception as e:
             print(f"Error getting image: {str(e)}")
             return None

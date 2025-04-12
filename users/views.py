@@ -26,6 +26,10 @@ from django.conf import settings
 
 from users.constants import SUPERUSER, PRODUCER, CONSUMER
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     serializer_class = BasicUserSerializer
@@ -58,28 +62,58 @@ class UserViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def verify_email(self, request, pk=None):
-        user = get_object_or_404(User, email=request.data.get("email"))
+        email = request.data.get("email")
         code = request.data.get("code")
+        
+        # Add logging for debugging
+        logger.info(f"Verifying email: {email} with code: {code}")
+        
+        if not email:
+            return Response(
+                {"error": "Email is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
         if not code:
             return Response(
                 {"error": "Verification code is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User with this email does not exist"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        
         if user.is_verified:
             return Response(
                 {"error": "User is already verified"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if user.verification_code.last().code != code:
+        
+        try:
+            verification = user.verification_code.last()
+            if not verification or verification.code != code:
+                return Response(
+                    {"error": "Verification code is invalid"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            
+            user.verification_code.all().delete()
+            user.is_verified = True
+            user.is_active = True
+            user.save()
+            
+            return Response({"message": "Email verified successfully"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error verifying email: {e}")
             return Response(
-                {"error": "Verification code is invalid"},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"error": "An error occurred while verifying your email"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        user.verification_code.all().delete()
-        user.is_verified = True
-        user.is_active = True
-        user.save()
-        return Response(status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"])
     def roles(self, request, pk=None):

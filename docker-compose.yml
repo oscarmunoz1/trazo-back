@@ -14,8 +14,7 @@ services:
     image: maildev/maildev
     ports:
       - "1080:1080"
-      - "1026:1025"
+      - "1025:1025"
 
 volumes:
   postgres_data:
-

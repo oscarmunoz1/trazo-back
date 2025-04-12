@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     "history",
     "reviews",
     "common",
+    "subscriptions",
     # django-allauth apps
     "allauth",
     "allauth.account",
@@ -74,6 +75,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    'subscriptions.middleware.SubscriptionMiddleware',
+    'subscriptions.middleware.UsageTrackingMiddleware',
 ]
 
 ROOT_URLCONF = "backend.urls"
@@ -138,15 +141,15 @@ EMAIL_USE_TLS = True
 
 BASE_URL = config("BASE_URL", default="http://localhost:8000/")
 
-# Common storage settings
+# Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# S3 configuration (will be used only when DEFAULT_FILE_STORAGE is set to S3)
+# S3 Configuration 
 AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default=None)
 AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default=None)
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default=None)
-AWS_S3_REGION_NAME = 'us-east-2'
+AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='us-east-1')
 AWS_S3_VERIFY = True
 AWS_S3_ADDRESSING_STYLE = "virtual"
 AWS_QUERYSTRING_AUTH = False
@@ -335,3 +338,9 @@ SIMPLE_JWT = {
     "AUTH_COOKIE_PATH": "/",  # The path of the auth cookie.
     "AUTH_COOKIE_SAMESITE": "None",  # Whether to set the flag restricting cookie leaks on cross-site requests. This can be 'Lax', 'Strict', or None to disable the flag.
 }
+
+# Stripe Settings
+STRIPE_PUBLIC_KEY = config("STRIPE_PUBLIC_KEY", default="")
+STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
+STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
+FRONTEND_URL = config("FRONTEND_URL", default="http://app.localhost:3000")

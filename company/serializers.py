@@ -5,6 +5,7 @@ from product.serializers import ParcelBasicSerializer
 from common.serializers import GallerySerializer
 from common.models import Gallery
 from users.models import WorksIn
+from subscriptions.serializers import SubscriptionSerializer
 
 
 class EstablishmentSerializer(ModelSerializer):
@@ -41,14 +42,19 @@ class EstablishmentSerializer(ModelSerializer):
             if not establishment.album or not establishment.album.images.exists():
                 return None
             
-            image = establishment.album.images.first().image
-            if not image:
+            image_obj = establishment.album.images.first()
+            if not image_obj:
+                return None
+                
+            # Use the url property which handles image, image_url, and s3_key
+            image_url = image_obj.url
+            if not image_url:
                 return None
 
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(image.url)
-            return image.url
+            if request and not image_url.startswith(('http://', 'https://')):
+                return request.build_absolute_uri(image_url)
+            return image_url
         except Exception as e:
             print(f"Error getting image: {str(e)}")
             return None
@@ -60,6 +66,7 @@ class EstablishmentSerializer(ModelSerializer):
 class UpdateEstablishmentSerializer(ModelSerializer):
     album = GallerySerializer(required=False)
     s3_keys = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
+    uploaded_image_urls = serializers.ListField(child=serializers.URLField(), required=False, write_only=True)
 
     class Meta:
         model = Establishment
@@ -74,6 +81,7 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "description",
             "country",
             "s3_keys",
+            "uploaded_image_urls",
         )
 
     def to_representation(self, instance):
@@ -81,22 +89,30 @@ class UpdateEstablishmentSerializer(ModelSerializer):
 
     def update(self, instance, validated_data):
         s3_keys = validated_data.pop('s3_keys', None)
+        uploaded_image_urls = validated_data.pop('uploaded_image_urls', None)
         album_data = self.context.get("request").FILES
         
+        # Create or get the gallery
+        gallery = instance.album
+        if gallery is None:
+            gallery = Gallery.objects.create()
+        
+        # Handle S3 keys from production environment
         if s3_keys:
-            gallery = instance.album
-            if gallery is None:
-                gallery = Gallery.objects.create()
-            
             for s3_key in s3_keys:
                 gallery_image = gallery.images.create(s3_key=s3_key)
                 gallery_image.save()
-            
             validated_data["album"] = gallery
+        
+        # Handle uploaded image URLs (for both environments)
+        elif uploaded_image_urls:
+            for url in uploaded_image_urls:
+                gallery_image = gallery.images.create(image_url=url)
+                gallery_image.save()
+            validated_data["album"] = gallery
+        
+        # Handle direct file uploads from form (development environment)
         elif album_data:
-            gallery = instance.album
-            if gallery is None:
-                gallery = Gallery.objects.create()
             for image_data in album_data.values():
                 gallery_image = gallery.images.create(image=image_data)
                 gallery_image.save()
@@ -106,6 +122,7 @@ class UpdateEstablishmentSerializer(ModelSerializer):
 
     def create(self, validated_data):
         s3_keys = validated_data.pop('s3_keys', None)
+        uploaded_image_urls = validated_data.pop('uploaded_image_urls', None)
         album_data = self.context.get("request").FILES
         
         if s3_keys:
@@ -113,6 +130,14 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             
             for s3_key in s3_keys:
                 gallery_image = gallery.images.create(s3_key=s3_key)
+                gallery_image.save()
+            
+            validated_data["album"] = gallery
+        elif uploaded_image_urls:
+            gallery = Gallery.objects.create()
+            
+            for url in uploaded_image_urls:
+                gallery_image = gallery.images.create(image_url=url)
                 gallery_image.save()
             
             validated_data["album"] = gallery
@@ -140,11 +165,16 @@ class RetrieveEstablishmentSerializer(ModelSerializer):
                 return []
             
             request = self.context.get('request')
-            return [
-                request.build_absolute_uri(image.image.url) if request else image.image.url
-                for image in establishment.album.images.all()
-                if image.image is not None
-            ]
+            image_list = []
+            
+            for image_obj in establishment.album.images.all():
+                image_url = image_obj.url
+                if image_url:
+                    if request and not image_url.startswith(('http://', 'https://')):
+                        image_url = request.build_absolute_uri(image_url)
+                    image_list.append(image_url)
+            
+            return image_list
         except Exception as e:
             print(f"Error getting images: {str(e)}")
             return []
@@ -227,6 +257,9 @@ class BasicEstablishmentSerializer(ModelSerializer):
 class RetrieveCompanySerializer(ModelSerializer):
     establishments = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
+    subscription = SubscriptionSerializer(read_only=True)
+    has_subscription = serializers.SerializerMethodField()
+    subscription_plan = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
@@ -242,6 +275,9 @@ class RetrieveCompanySerializer(ModelSerializer):
             "logo",
             "description",
             "establishments",
+            "subscription",
+            "has_subscription",
+            "subscription_plan",
         )
     
     def get_serializer_context(self):
@@ -262,20 +298,46 @@ class RetrieveCompanySerializer(ModelSerializer):
 
     def get_image(self, company):
         try:
+            if not hasattr(company, 'album'):
+                return None
+            
             if not company.album or not company.album.images.exists():
                 return None
             
-            image = company.album.images.first().image
-            if not image:
+            image_obj = company.album.images.first()
+            if not image_obj:
+                return None
+                
+            # Use the url property which handles image, image_url, and s3_key
+            image_url = image_obj.url
+            if not image_url:
                 return None
 
             request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(image.url)
-            return image.url
+            if request and not image_url.startswith(('http://', 'https://')):
+                return request.build_absolute_uri(image_url)
+            return image_url
         except Exception as e:
             print(f"Error getting image: {str(e)}")
             return None
+
+    def get_has_subscription(self, obj):
+        """Check if company has an active subscription"""
+        if hasattr(obj, 'subscription') and obj.subscription:
+            return obj.subscription.status in ['active', 'trialing']
+        return False
+    
+    def get_subscription_plan(self, obj):
+        """Get serialized subscription plan data if available"""
+        if hasattr(obj, 'subscription') and obj.subscription and obj.subscription.plan:
+            return {
+                'id': obj.subscription.plan.id,
+                'name': obj.subscription.plan.name,
+                'price': obj.subscription.plan.price,
+                'interval': obj.subscription.plan.interval,
+                'features': obj.subscription.plan.features
+            }
+        return None
 
 
 class CreateCompanySerializer(ModelSerializer):

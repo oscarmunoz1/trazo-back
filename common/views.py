@@ -8,10 +8,13 @@ import logging
 import datetime
 import boto3
 import uuid
+import json
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.conf import settings
+from django.core.files.storage import default_storage
+from django.core.files.base import ContentFile
 
 logger = logging.getLogger(__name__)
 
@@ -107,3 +110,73 @@ def get_upload_urls(request):
     except Exception as e:
         logger.error(f"Error generating pre-signed URLs: {str(e)}")
         return Response({"error": str(e)}, status=500)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def get_presigned_url(request):
+    """Generate a pre-signed URL for client-side S3 upload"""
+    filename = request.data.get('filename')
+    file_type = request.data.get('fileType')
+    folder = request.data.get('folder', 'uploads')
+    
+    if not filename or not file_type:
+        return Response({'error': 'Filename and fileType are required'}, status=400)
+    
+    # Generate a unique key for the file
+    unique_filename = f"{uuid.uuid4()}-{filename}"
+    key = f"media/{folder}/{unique_filename}"
+    
+    # Only generate S3 URLs in production environment
+    if settings.DEFAULT_FILE_STORAGE == 'storages.backends.s3boto3.S3Boto3Storage':
+        try:
+            # Generate the presigned URL
+            s3_client = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION_NAME
+            )
+            
+            presigned_url = s3_client.generate_presigned_url(
+                'put_object',
+                Params={
+                    'Bucket': settings.AWS_STORAGE_BUCKET_NAME,
+                    'Key': key,
+                    'ContentType': file_type,
+                    'ACL': 'public-read'
+                },
+                ExpiresIn=3600  # URL expires after 1 hour
+            )
+            
+            file_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{key}"
+            
+            return Response({
+                'presigned_url': presigned_url,
+                's3_key': key,
+                'file_url': file_url
+            })
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
+    else:
+        # In development, return a placeholder since we'll handle uploads via standard form
+        return Response({
+            'development': True,
+            'message': 'Running in development mode - use form upload instead'
+        })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def local_file_upload(request):
+    """Handle file uploads in development environment"""
+    if 'file' not in request.FILES:
+        return Response({'error': 'No file provided'}, status=400)
+    
+    file = request.FILES['file']
+    
+    path = default_storage.save(f'uploads/{file.name}', ContentFile(file.read()))
+    file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
+    
+    return Response({
+        'file_url': file_url,
+        'path': path
+    })

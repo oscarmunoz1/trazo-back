@@ -26,6 +26,7 @@ from history.serializers import HistoryListOptionsSerializer
 from reviews.models import Review
 from reviews.serializers import ListReviewSerializer
 from backend.permissions import CompanyNestedViewSet
+from subscriptions.permissions import HasEstablishmentCreationPermission
 
 
 class CompanyViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
@@ -64,6 +65,8 @@ class CompanyViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
 class EstablishmentViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
     queryset = Establishment.objects.all()
     filter_backends = [filters.OrderingFilter]
+    serializer_class = UpdateEstablishmentSerializer
+    permission_classes = [IsAuthenticated, HasEstablishmentCreationPermission]
 
     def get_serializer_class(self):
         if (

@@ -34,6 +34,7 @@ urlpatterns = [
     path("", include("history.urls")),
     path("", include("reviews.urls")),
     path("", include("common.urls")),
+    path("", include("subscriptions.urls")),
 ]
 
 if settings.DEBUG:

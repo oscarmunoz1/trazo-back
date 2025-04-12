@@ -1,0 +1,22 @@
+[
+    {
+        "Name": "_a7b4c5416532daf1913acdddab082c3b.trazo.io.",
+        "Type": "CNAME",
+        "TTL": 60,
+        "ResourceRecords": [
+            {
+                "Value": "_6d487db88b51f4df7ba8c57d1add0512.zfyfvmchrl.acm-validations.aws."
+            }
+        ]
+    },
+    {
+        "Name": "app.trazo.io.",
+        "Type": "CNAME",
+        "TTL": 300,
+        "ResourceRecords": [
+            {
+                "Value": "trazo.netlify.app"
+            }
+        ]
+    }
+]
