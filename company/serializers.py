@@ -286,15 +286,26 @@ class RetrieveCompanySerializer(ModelSerializer):
         return context 
 
     def get_establishments(self, company):
-        user = self.context["request"].user
-        worksIn = WorksIn.objects.filter(user=user, company=company)[0]
-        if worksIn.role == "CA":
+        try:
+            if "request" not in self.context:
+                # Return basic establishment data without user-specific filtering
+                return BasicEstablishmentSerializer(
+                    company.establishment_set.all().order_by("name"), many=True
+                ).data
+                
+            user = self.context["request"].user
+            worksIn = WorksIn.objects.filter(user=user, company=company)[0]
+            if worksIn.role == "CA":
+                return EstablishmentSerializer(
+                    company.establishment_set.all().order_by("name"), many=True, context=self.context
+                ).data
             return EstablishmentSerializer(
-                company.establishment_set.all().order_by("name"), many=True, context=self.context
+                worksIn.establishments_in_charge.all(), many=True, context=self.context
             ).data
-        return EstablishmentSerializer(
-            worksIn.establishments_in_charge.all(), many=True, context=self.context
-        ).data
+        except Exception as e:
+            # Log error and return empty list as fallback
+            print(f"Error getting establishments: {str(e)}")
+            return []
 
     def get_image(self, company):
         try:

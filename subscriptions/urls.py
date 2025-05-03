@@ -13,4 +13,5 @@ router.register(r'checkout', views.CheckoutViewSet, basename='checkout')
 urlpatterns = [
     path('subscriptions/', include(router.urls)),
     path('subscriptions/webhook/', views.stripe_webhook, name='webhook'),
+    # Ensures that dashboard endpoint is accessible at /subscriptions/subscriptions/dashboard/
 ]

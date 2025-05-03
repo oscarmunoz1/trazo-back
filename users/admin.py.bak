@@ -1,0 +1,147 @@
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from .models import User, WorksIn, VerificationCode
+from .forms import CustomUserCreationForm, CustomUserChangeForm
+from company.models import Company
+
+class SubscriptionInfoListFilter(admin.SimpleListFilter):
+    title = "Subscription Status"
+    parameter_name = "subscription_status"
+    
+    def lookups(self, request, model_admin):
+        return (
+            ('active', 'Active'),
+            ('trialing', 'Trialing'),
+            ('canceled', 'Canceled'),
+            ('no_subscription', 'No Subscription'),
+        )
+    
+    def queryset(self, request, queryset):
+        if self.value() == 'active':
+            return queryset.filter(companies__subscription__status='active')
+        if self.value() == 'trialing':
+            return queryset.filter(companies__subscription__status='trialing')
+        if self.value() == 'canceled':
+            return queryset.filter(companies__subscription__status='canceled')
+        if self.value() == 'no_subscription':
+            return queryset.filter(companies__subscription__isnull=True)
+
+class RoleInline(admin.TabularInline):
+    model = WorksIn
+    extra = 1
+    
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "company":
+            kwargs["queryset"] = Company.objects.prefetch_related('subscription').all()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+class CompanyWithSubscriptionInline(admin.TabularInline):
+    model = User.companies.through
+    extra = 0
+    readonly_fields = ('company', 'role', 'subscription_status', 'plan_name', 'current_period_end')
+    fields = ('company', 'role', 'subscription_status', 'plan_name', 'current_period_end')
+    verbose_name = "Company & Subscription"
+    verbose_name_plural = "Companies & Subscriptions"
+    
+    def subscription_status(self, obj):
+        if hasattr(obj.company, 'subscription') and obj.company.subscription:
+            return obj.company.subscription.status
+        return "None"
+    subscription_status.short_description = "Status"
+    
+    def plan_name(self, obj):
+        if hasattr(obj.company, 'subscription') and obj.company.subscription:
+            return obj.company.subscription.plan.name
+        return "N/A"
+    plan_name.short_description = "Plan"
+    
+    def current_period_end(self, obj):
+        if hasattr(obj.company, 'subscription') and obj.company.subscription:
+            return obj.company.subscription.current_period_end
+        return "N/A"
+    current_period_end.short_description = "Renewal Date"
+    
+    def has_add_permission(self, request, obj=None):
+        return False
+    
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+class CustomUserAdmin(UserAdmin):
+    add_form = CustomUserCreationForm
+    form = CustomUserChangeForm
+    model = User
+    list_display_links = ["email"]
+    search_fields = ("email",)
+    ordering = ("email",)
+    inlines = (RoleInline, CompanyWithSubscriptionInline)
+    list_display = (
+        "email",
+        "is_staff",
+        "is_active",
+        "is_superuser",
+        "subscription_status",
+    )
+    list_filter = ("email", "is_staff", "is_active", "is_superuser", "user_type", SubscriptionInfoListFilter)
+    
+    def subscription_status(self, obj):
+        companies = obj.companies.all()
+        if not companies:
+            return "No Company"
+        
+        active_subscriptions = companies.filter(subscription__status='active').count()
+        trial_subscriptions = companies.filter(subscription__status='trialing').count()
+        
+        if active_subscriptions:
+            return f"Active ({active_subscriptions})"
+        if trial_subscriptions:
+            return f"Trial ({trial_subscriptions})"
+        return "Inactive"
+    subscription_status.short_description = "Subscription"
+
+    fieldsets = (
+        # (None, {'fields': ('email', 'password')}),
+        (
+            ("Personal info"),
+            {"fields": ("first_name", "last_name", "email", "user_type")},
+        ),
+        (
+            ("Permissions"),
+            {
+                "fields": (
+                    "is_active",
+                    "is_staff",
+                    "is_superuser",
+                    "groups",
+                    "user_permissions",
+                ),
+            },
+        ),
+        (("Important dates"), {"fields": ("last_login", "date_joined")}),
+    )
+    add_fieldsets = (
+        (
+            None,
+            {
+                "classes": ("wide",),
+                "fields": (
+                    "email",
+                    "password1",
+                    "password2",
+                    "is_staff",
+                    "is_active",
+                    "user_type",
+                ),
+            },
+        ),
+    )
+
+    def get_inline_instances(self, request, obj=None):
+        if not obj:
+            return list()
+        return super(CustomUserAdmin, self).get_inline_instances(request, obj)
+
+
+admin.site.register(User, CustomUserAdmin)
+admin.site.register(VerificationCode)
+admin.site.register(WorksIn)

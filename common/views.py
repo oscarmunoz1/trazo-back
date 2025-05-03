@@ -168,15 +168,66 @@ def get_presigned_url(request):
 @permission_classes([IsAuthenticated])
 def local_file_upload(request):
     """Handle file uploads in development environment"""
-    if 'file' not in request.FILES:
-        return Response({'error': 'No file provided'}, status=400)
+    # Log request details for debugging
+    logger.debug(f"Request method: {request.method}")
+    logger.debug(f"Content type: {request.content_type}")
+    logger.debug(f"Request FILES: {request.FILES}")
+    logger.debug(f"Request headers: {request.headers}")
     
-    file = request.FILES['file']
+    # If Content-Type is application/json but we have FILES, Django's parser has already handled it
+    if request.content_type and 'application/json' in request.content_type and request.FILES:
+        logger.info("Request has application/json Content-Type but contains files. Proceeding anyway.")
     
-    path = default_storage.save(f'uploads/{file.name}', ContentFile(file.read()))
-    file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
-    
-    return Response({
-        'file_url': file_url,
-        'path': path
-    })
+    try:
+        # Check if we have files in the request
+        if not request.FILES:
+            logger.error("No files found in request.FILES")
+            # Try to get raw request body if available
+            try:
+                if hasattr(request, '_body'):
+                    logger.error(f"Raw request body: {request._body[:100]}...")
+            except Exception as e:
+                logger.error(f"Could not access raw body: {str(e)}")
+                
+            return Response({'error': 'No files were submitted'}, status=400)
+        
+        # Get the file from the request
+        upload_file = request.FILES.get('file')
+        if not upload_file:
+            logger.error(f"No file field found. Available fields: {list(request.FILES.keys())}")
+            return Response({
+                'error': 'No file found with key "file"',
+                'available_keys': list(request.FILES.keys())
+            }, status=400)
+        
+        logger.info(f"Processing file upload: {upload_file.name}, size: {upload_file.size}, type: {upload_file.content_type}")
+        
+        # Create unique filename to prevent overwrites
+        filename = f"{uuid.uuid4()}-{upload_file.name}"
+        
+        # Save the file
+        save_path = f'uploads/{filename}'
+        path = default_storage.save(save_path, ContentFile(upload_file.read()))
+        
+        # Get the full URL
+        file_url = request.build_absolute_uri(settings.MEDIA_URL + path)
+        logger.info(f"File saved to {path}, URL: {file_url}")
+        
+        # Return success response
+        return Response({
+            'file_url': file_url,
+            'path': path,
+            'success': True
+        })
+        
+    except Exception as e:
+        logger.exception(f"Error uploading file: {str(e)}")
+        
+        # Check if this is a UTF-8 decode error, which is common with binary file uploads
+        if "utf-8" in str(e).lower() and "decode" in str(e).lower():
+            logger.error("This appears to be a binary data handling error. Make sure the request is properly formed as multipart/form-data.")
+            
+        return Response({
+            'error': f'File upload failed: {str(e)}',
+            'detail': 'This may be a Content-Type mismatch. Ensure your request is using multipart/form-data.'
+        }, status=500)
