@@ -12,6 +12,7 @@ class EstablishmentSerializer(ModelSerializer):
     parcels = serializers.SerializerMethodField()
     image = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
+    images = serializers.SerializerMethodField()
 
     class Meta:
         model = Establishment
@@ -28,6 +29,20 @@ class EstablishmentSerializer(ModelSerializer):
             "image",
             "country",
             "location",
+            "type",
+            "latitude",
+            "longitude",
+            "contact_person",
+            "contact_phone",
+            "contact_email",
+            "facebook",
+            "instagram",
+            "certifications",
+            "about",
+            "main_activities",
+            "location_highlights",
+            "custom_message",
+            "images",
         )
 
     def get_parcels(self, establishment):
@@ -62,11 +77,29 @@ class EstablishmentSerializer(ModelSerializer):
     def get_location(self, establishment):
         return establishment.get_location()
 
+    def get_images(self, establishment):
+        try:
+            if not establishment.album:
+                return []
+            request = self.context.get('request')
+            image_list = []
+            for image_obj in establishment.album.images.all():
+                image_url = image_obj.url
+                if image_url:
+                    if request and not image_url.startswith(('http://', 'https://')):
+                        image_url = request.build_absolute_uri(image_url)
+                    image_list.append({"id": image_obj.id, "url": image_url})
+            return image_list
+        except Exception as e:
+            print(f"Error getting images: {str(e)}")
+            return []
+
 
 class UpdateEstablishmentSerializer(ModelSerializer):
     album = GallerySerializer(required=False)
     s3_keys = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
     uploaded_image_urls = serializers.ListField(child=serializers.URLField(), required=False, write_only=True)
+    images_to_delete = serializers.ListField(child=serializers.CharField(), required=False, write_only=True)
 
     class Meta:
         model = Establishment
@@ -82,12 +115,28 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "country",
             "s3_keys",
             "uploaded_image_urls",
+            "images_to_delete",
+            "type",
+            "latitude",
+            "longitude",
+            "contact_person",
+            "contact_phone",
+            "contact_email",
+            "facebook",
+            "instagram",
+            "certifications",
+            "about",
+            "main_activities",
+            "location_highlights",
+            "custom_message",
+            "address",
         )
 
     def to_representation(self, instance):
         return EstablishmentSerializer(instance).data
 
     def update(self, instance, validated_data):
+        images_to_delete = validated_data.pop('images_to_delete', [])
         s3_keys = validated_data.pop('s3_keys', None)
         uploaded_image_urls = validated_data.pop('uploaded_image_urls', None)
         album_data = self.context.get("request").FILES
@@ -96,6 +145,11 @@ class UpdateEstablishmentSerializer(ModelSerializer):
         gallery = instance.album
         if gallery is None:
             gallery = Gallery.objects.create()
+        
+        # Delete images from the gallery
+        if images_to_delete and instance.album:
+            for image_id in images_to_delete:
+                instance.album.images.filter(id=image_id).delete()
         
         # Handle S3 keys from production environment
         if s3_keys:
@@ -268,13 +322,21 @@ class RetrieveCompanySerializer(ModelSerializer):
             "name",
             "tradename",
             "address",
-            "image",
             "city",
             "state",
             "country",
+            "fiscal_id",
             "logo",
             "description",
+            "invitation_code",
+            "contact_email",
+            "contact_phone",
+            "website",
+            "facebook",
+            "instagram",
+            "certifications",
             "establishments",
+            "image",
             "subscription",
             "has_subscription",
             "subscription_plan",

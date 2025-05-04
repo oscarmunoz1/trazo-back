@@ -195,7 +195,7 @@ class HistorySerializer(serializers.ModelSerializer):
     product = serializers.SerializerMethodField()
     parcel = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
-
+    operator = BasicUserSerializer(read_only=True)
 
     class Meta:
         model = History
@@ -214,6 +214,11 @@ class HistorySerializer(serializers.ModelSerializer):
             "qr_code",
             "reputation",
             "images",
+            "is_outdoor",
+            "age_of_plants",
+            "number_of_plants",
+            "soil_ph",
+            "operator",
         ]
         read_only_fields = ["id", "created_at", "updated_at", "certificate_percentage"]
 

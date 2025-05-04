@@ -16,6 +16,12 @@ class Company(models.Model):
     logo = models.ImageField(upload_to="company_logos", blank=True)
     description = models.TextField(blank=True, null=True)
     invitation_code = models.CharField(max_length=30, blank=True, null=True)
+    contact_email = models.EmailField(max_length=254, blank=True, null=True)
+    contact_phone = models.CharField(max_length=30, blank=True, null=True)
+    website = models.URLField(max_length=200, blank=True, null=True)
+    facebook = models.URLField(max_length=200, blank=True, null=True)
+    instagram = models.URLField(max_length=200, blank=True, null=True)
+    certifications = models.TextField(blank=True, null=True)
 
     class Meta:
         verbose_name = _("Company")
@@ -168,6 +174,19 @@ class Establishment(models.Model):
     )
     description = models.TextField(blank=True, null=True)
     country = models.CharField(max_length=30, blank=True, null=True)
+    type = models.CharField(max_length=30, blank=True, null=True)
+    latitude = models.FloatField(blank=True, null=True)
+    longitude = models.FloatField(blank=True, null=True)
+    contact_person = models.CharField(max_length=60, blank=True, null=True)
+    contact_phone = models.CharField(max_length=30, blank=True, null=True)
+    contact_email = models.EmailField(max_length=254, blank=True, null=True)
+    facebook = models.URLField(max_length=200, blank=True, null=True)
+    instagram = models.URLField(max_length=200, blank=True, null=True)
+    certifications = models.TextField(blank=True, null=True)
+    about = models.TextField(blank=True, null=True)
+    main_activities = models.TextField(blank=True, null=True)
+    location_highlights = models.TextField(blank=True, null=True)
+    custom_message = models.TextField(blank=True, null=True)
 
     class Meta:
         verbose_name = _("Establishment")

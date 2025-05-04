@@ -37,6 +37,13 @@ class Parcel(models.Model):
     )
     polygon = models.JSONField(blank=True, null=True)
     map_metadata = models.JSONField(blank=True, null=True)
+    crop_type = models.CharField(max_length=50, blank=True, null=True)
+    soil_type = models.CharField(max_length=50, blank=True, null=True)
+    unique_code = models.CharField(max_length=50, blank=True, null=True)
+    certification_type = models.CharField(max_length=50, blank=True, null=True)
+    contact_person = models.CharField(max_length=60, blank=True, null=True)
+    contact_phone = models.CharField(max_length=30, blank=True, null=True)
+    contact_email = models.EmailField(max_length=254, blank=True, null=True)
 
     def __str__(self):
         return str(self.id) + " - " + self.name + " - " + self.establishment.name

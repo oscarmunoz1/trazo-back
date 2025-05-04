@@ -52,6 +52,13 @@ class History(models.Model):
         null=True,
         related_name="histories",
     )
+    is_outdoor = models.BooleanField(default=True)
+    age_of_plants = models.CharField(max_length=30, blank=True, null=True)
+    number_of_plants = models.CharField(max_length=30, blank=True, null=True)
+    soil_ph = models.CharField(max_length=30, blank=True, null=True)
+    operator = models.ForeignKey(
+        "users.User", on_delete=models.SET_NULL, blank=True, null=True, related_name="productions_operated"
+    )
 
     def __str__(self) -> str:
         return (
