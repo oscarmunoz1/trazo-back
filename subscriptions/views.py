@@ -34,6 +34,9 @@ class PlanViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = super().get_queryset()
         interval = self.request.query_params.get('interval')
         
+        logger.info(f"Getting plans with interval: {interval}")
+        logger.info(f"Initial queryset count: {queryset.count()}")
+        
         # Create cache key based on interval
         cache_key = f"plans_{interval}" if interval else "plans_all"
         cached_data = cache.get(cache_key)
@@ -45,6 +48,7 @@ class PlanViewSet(viewsets.ReadOnlyModelViewSet):
         # Filter by interval if provided
         if interval:
             queryset = queryset.filter(interval=interval)
+            logger.info(f"Filtered queryset count: {queryset.count()}")
         
         # Cache the queryset for 1 hour (3600 seconds)
         cache.set(cache_key, queryset, 3600)

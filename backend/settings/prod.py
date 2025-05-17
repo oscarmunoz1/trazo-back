@@ -41,3 +41,22 @@ EMAIL_USE_TLS = False if os.environ.get("EMAIL_DISABLE_TLS") == "True" else True
 
 # Use S3 in production
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+# Override Celery settings for production
+CELERY_BROKER_URL = config('REDIS_URL')
+CELERY_RESULT_BACKEND = config('REDIS_URL')
+CELERY_BROKER_USE_SSL = True
+CELERY_REDIS_BACKEND_USE_SSL = True
+
+# Override Redis Cache settings for production
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": config('REDIS_URL'),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SSL": True,
+            "SSL_CERT_REQS": None,
+        }
+    }
+}

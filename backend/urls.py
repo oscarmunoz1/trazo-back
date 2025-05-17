@@ -35,6 +35,7 @@ urlpatterns = [
     path("", include("reviews.urls")),
     path("", include("common.urls")),
     path("", include("subscriptions.urls")),
+    path('carbon/', include('carbon.urls')),
 ]
 
 if settings.DEBUG:

@@ -1,6 +1,7 @@
 import os
 
 from backend.settings.base import *
+from decouple import config
 
 ALLOWED_HOSTS = ("localhost", ".localhost", "192.168.1.3", "7172-167-60-250-132.ngrok-free.app")
 
@@ -48,3 +49,18 @@ EMAIL_HOST_PASSWORD = None
 
 # Use local filesystem in development
 DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
+# Override Celery settings for development
+CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
+
+# Override Redis Cache settings for development
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": config('REDIS_URL', default='redis://localhost:6379/1'),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}

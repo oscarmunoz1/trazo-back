@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from decouple import config
 from pathlib import Path
 from datetime import timedelta
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -58,11 +59,15 @@ INSTALLED_APPS = [
     "reviews",
     "common",
     "subscriptions",
+    "carbon",
     # django-allauth apps
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",  # for Google OAuth 2.0
+    # Celery and Redis
+    "django_celery_beat",
+    "django_redis",
 ]
 
 MIDDLEWARE = [
@@ -119,19 +124,100 @@ DATABASES = {
         "NAME": config("DATABASE_NAME", default="postgres"),
         "USER": config("DATABASE_USER", default="postgres"),
         "PASSWORD": config("DATABASE_PASSWORD", default="postgres"),
-        "HOST": config("DATABASE_HOST", default="localhost"),
+        "HOST": config("DATABASE_HOST", default="db"),
         "PORT": config("DATABASE_PORT", default=5432),
     }
 }
 
-# Celery configuration
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "rediss://" + config('REDIS_ENDPOINT', default='localhost:6379') + "/0"
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "UTC"
-CELERY_IMPORTS = ("tasks",)
+# Internationalization
+# https://docs.djangoproject.com/en/4.1/topics/i18n/
+
+LANGUAGE_CODE = "en-us"
+
+TIME_ZONE = "UTC"
+
+USE_I18N = True
+
+USE_TZ = True
+
+# Celery Configuration
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+
+# Additional Celery Settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # 25 minutes
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_QUEUES = {
+    'default': {
+        'exchange': 'default',
+        'routing_key': 'default',
+    },
+    'carbon': {
+        'exchange': 'carbon',
+        'routing_key': 'carbon',
+    },
+}
+
+# Celery Beat Schedule
+CELERY_BEAT_SCHEDULE = {
+    'generate-nightly-reports': {
+        'task': 'carbon.tasks.generate_nightly_reports',
+        'schedule': crontab(hour=0, minute=0),  # Run at midnight
+        'options': {'queue': 'carbon'},
+    },
+    'award-sustainability-badges': {
+        'task': 'carbon.tasks.award_sustainability_badges',
+        'schedule': crontab(hour=1, minute=0),  # Run at 1 AM
+        'options': {'queue': 'carbon'},
+    },
+    'cleanup-old-audit-logs': {
+        'task': 'carbon.tasks.cleanup_old_audit_logs',
+        'schedule': crontab(hour=2, minute=0),  # Run at 2 AM
+        'options': {'queue': 'carbon'},
+    },
+    'update-industry-benchmarks': {
+        'task': 'carbon.tasks.update_industry_benchmarks',
+        'schedule': crontab(hour=3, minute=0),  # Run at 3 AM
+        'options': {'queue': 'carbon'},
+    },
+}
+
+# Redis Cache Configuration
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://localhost:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "PARSER_CLASS": "redis.connection.HiredisParser",
+            "CONNECTION_POOL_CLASS": "redis.BlockingConnectionPool",
+            "CONNECTION_POOL_CLASS_KWARGS": {
+                "max_connections": 50,
+                "timeout": 20,
+            },
+            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+            "IGNORE_EXCEPTIONS": True,
+        },
+        "KEY_PREFIX": "trazo",
+    }
+}
+
+# CoolFarmTool API configuration for carbon calculations
+COOLFARMTOOL_API_KEY = config('COOLFARMTOOL_API_KEY', default='')
+COOLFARMTOOL_BASE_URL = config('COOLFARMTOOL_BASE_URL', default='https://api.coolfarmtool.org')
+
+# CoolFarmTool API Configuration
+COOLFARM_API_KEY = os.environ.get('COOLFARM_API_KEY', '')
+COOLFARM_API_URL = os.environ.get('COOLFARM_API_URL', 'https://api.coolfarmtool.org/v1')
 
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_HOST_USER = "apikey"
@@ -234,18 +320,6 @@ AUTH_PASSWORD_VALIDATORS = [
         "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
-
-
-# Internationalization
-# https://docs.djangoproject.com/en/4.1/topics/i18n/
-
-LANGUAGE_CODE = "en-us"
-
-TIME_ZONE = "UTC"
-
-USE_I18N = True
-
-USE_TZ = True
 
 
 # Default primary key field type

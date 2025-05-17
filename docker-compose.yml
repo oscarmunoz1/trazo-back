@@ -9,6 +9,11 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
     ports:
       - "${DATABASE_PORT}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   maildev:
     image: maildev/maildev
@@ -16,5 +21,86 @@ services:
       - "1080:1080"
       - "1025:1025"
 
+  redis:
+    image: redis:7.0
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  celery_worker:
+    build:
+      context: .
+      args:
+        - SKIP_COLLECTSTATIC=1
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        while ! nc -z db 5432; do
+          sleep 1
+        done &&
+        echo 'PostgreSQL started' &&
+        python manage.py migrate &&
+        celery -A backend worker -l INFO
+      "
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings.prod
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=False
+      - TIME_ZONE=UTC
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: .
+      args:
+        - SKIP_COLLECTSTATIC=1
+    command: >
+      sh -c "
+        echo 'Waiting for postgres...' &&
+        while ! nc -z db 5432; do
+          sleep 1
+        done &&
+        echo 'PostgreSQL started' &&
+        celery -A backend beat -l INFO
+      "
+    volumes:
+      - .:/app
+    environment:
+      - DJANGO_SETTINGS_MODULE=backend.settings.prod
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DATABASE_USER=${DATABASE_USER}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=False
+      - TIME_ZONE=UTC
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  redis_data:
