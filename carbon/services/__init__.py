@@ -7,11 +7,15 @@ from .calculator import calculator
 from .analytics import analytics
 from .verification import verification_service
 from .certificate import certificate_generator
+from .report_generator import report_generator
 
 __all__ = [
     'coolfarm_service',
     'calculator',
     'analytics',
     'verification_service',
-    'certificate_generator'
+    'certificate_generator',
+    'report_generator'
 ] 
+
+# Carbon services module 

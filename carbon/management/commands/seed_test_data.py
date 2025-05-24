@@ -363,18 +363,21 @@ class Command(BaseCommand):
             }
         )
 
-        # Create carbon benchmark
-        CarbonBenchmark.objects.get_or_create(
+        # Create benchmark for carbon footprint reference
+        benchmark, _ = CarbonBenchmark.objects.get_or_create(
             industry='Citrus',
-            year=2024,
-            average_emissions=0.5,
-            min_emissions=0.3,
-            max_emissions=0.8,
-            company_count=100,
-            unit='kg CO2e/kg',
-            source='USDA',
-            usda_verified=True,
-            crop_type='Oranges'
+            year=timezone.now().year,
+            defaults={
+                'average_emissions': 0.5,  # kg CO2e per kg of oranges
+                'min_emissions': 0.3,
+                'max_emissions': 0.8,
+                'company_count': 50,
+                'unit': 'kg CO2e/kg',
+                'source': 'USDA SOE 2024',
+                'usda_verified': True,
+                'crop_type': 'Orange',
+                'region': 'California'
+            }
         )
 
         # Create carbon report for current production
@@ -446,5 +449,154 @@ class Command(BaseCommand):
             status='completed',
             is_verified=True
         )
+
+        # Enhanced finished production with consumer-facing data
+        if finished_production:
+            # Add farmer story data
+            finished_production.farmer_name = "John Smith"
+            finished_production.farmer_bio = "Third-generation farmer committed to sustainable practices since 1980"
+            finished_production.farmer_photo = "https://images.unsplash.com/photo-1520052203542-d3095f1b6cf0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDI0fHxmYXJtZXJ8ZW58MHx8fHwxNzA0ODQ1NzE1fDA&ixlib=rb-4.0.3&q=80&w=1080"
+            finished_production.farmer_location = "Central Valley, California"
+            finished_production.farmer_certifications = ["USDA Organic", "Fair Trade"]
+            finished_production.sustainability_initiatives = [
+                "Solar-powered irrigation",
+                "Compost-based fertilization",
+                "Cover cropping for soil health",
+                "Water conservation through drip irrigation",
+                "Renewable energy use"
+            ]
+            finished_production.carbon_reduction = 25000  # kg CO2e reduced annually
+            finished_production.years_of_practice = 15
+            finished_production.save()
+            
+            # Add carbon data with relatable footprint
+            total_emissions = 0.3  # kg CO2e per kg
+            total_offsets = 0.2    # kg CO2e per kg
+            net_footprint = total_emissions - total_offsets
+            relatable_footprint = "like driving 1 mile"  # For consumer understanding
+            
+            carbon_report, _ = CarbonReport.objects.get_or_create(
+                production=finished_production,
+                defaults={
+                    'period_start': finished_production.start_date,
+                    'period_end': finished_production.finish_date or timezone.now(),
+                    'total_emissions': total_emissions * finished_production.production_amount,
+                    'total_offsets': total_offsets * finished_production.production_amount,
+                    'net_footprint': net_footprint * finished_production.production_amount,
+                    'carbon_score': CarbonEntry.calculate_carbon_score(
+                        total_emissions * finished_production.production_amount,
+                        total_offsets * finished_production.production_amount,
+                        benchmark.average_emissions * finished_production.production_amount
+                    ),
+                    'usda_verified': True,
+                    'cost_savings': 1500.0,
+                    'recommendations': [
+                        {
+                            'title': 'Efficient Irrigation',
+                            'description': 'This producer uses water-saving irrigation techniques',
+                            'impact': 'Reduces water usage by up to 30% compared to conventional methods',
+                            'cost_savings': 'Saves approximately $500 per acre annually',
+                            'implementation': 'Drip irrigation and soil moisture monitoring',
+                            'category': 'water'
+                        },
+                        {
+                            'title': 'Organic Fertilizers',
+                            'description': 'This product is grown with natural fertilizers',
+                            'impact': 'Reduces chemical runoff and builds soil health',
+                            'cost_savings': 'Improves soil quality over time',
+                            'implementation': 'Compost and natural nutrient sources',
+                            'category': 'soil'
+                        },
+                        {
+                            'title': 'Solar Power',
+                            'description': 'This farm uses solar energy in its operations',
+                            'impact': 'Reduces fossil fuel emissions by up to 40%',
+                            'cost_savings': 'Saves approximately $2,000 annually in energy costs',
+                            'implementation': 'Solar panels power farm operations',
+                            'category': 'energy'
+                        },
+                        {
+                            'title': 'Reduced Pesticide Use',
+                            'description': 'Uses integrated pest management to minimize chemical use',
+                            'impact': 'Reduces harmful chemical runoff by up to 50%',
+                            'cost_savings': 'Saves on expensive pesticides',
+                            'implementation': 'Natural predators and targeted treatments',
+                            'category': 'biodiversity'
+                        }
+                    ]
+                }
+            )
+            
+            # Add emissions by category for consumer view
+            emissions_by_category = {
+                'fertilizer': 0.12,
+                'fuel': 0.08,
+                'irrigation': 0.05,
+                'transportation': 0.05
+            }
+            
+            for category, amount in emissions_by_category.items():
+                source, _ = CarbonSource.objects.get_or_create(
+                    name=f'{category.capitalize()} Emissions',
+                    defaults={
+                        'description': f'Emissions from {category}',
+                        'category': category,
+                        'default_emission_factor': 1.0,
+                        'unit': 'kg CO2e'
+                    }
+                )
+                
+                CarbonEntry.objects.get_or_create(
+                    production=finished_production,
+                    type='emission',
+                    source=source,
+                    amount=amount * finished_production.production_amount,
+                    co2e_amount=amount * finished_production.production_amount,
+                    year=timezone.now().year,
+                    description=f'{category.capitalize()} emissions for {finished_production.name}',
+                    usda_verified=True
+                )
+            
+            # Add offset entries for consumer view
+            offset_by_action = {
+                'tree planting': 0.12,
+                'renewable energy credits': 0.08
+            }
+            
+            for action, amount in offset_by_action.items():
+                source, _ = CarbonSource.objects.get_or_create(
+                    name=f'{action.capitalize()}',
+                    defaults={
+                        'description': f'Carbon offsets from {action}',
+                        'category': 'offset',
+                        'default_emission_factor': -1.0,
+                        'unit': 'kg CO2e'
+                    }
+                )
+                
+                CarbonEntry.objects.get_or_create(
+                    production=finished_production,
+                    type='offset',
+                    source=source,
+                    amount=amount * finished_production.production_amount,
+                    co2e_amount=amount * finished_production.production_amount,
+                    year=timezone.now().year,
+                    description=f'{action.capitalize()} for {finished_production.name}',
+                    usda_verified=True
+                )
+            
+            # Add sustainability badges to the production
+            badges = SustainabilityBadge.objects.all()
+            if not badges.exists():
+                from django.core.management import call_command
+                call_command('seed_sustainability_badges')
+                badges = SustainabilityBadge.objects.all()
+            
+            for badge in badges[:4]:  # Assign first 4 badges
+                finished_production.badges.add(badge)
+                
+            self.stdout.write(self.style.SUCCESS(
+                f'Added enhanced consumer data to production {finished_production.name}'
+            ))
 
         self.stdout.write(self.style.SUCCESS('Successfully seeded test data')) 

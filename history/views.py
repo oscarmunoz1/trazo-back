@@ -13,6 +13,10 @@ from .models import (
     WeatherEvent,
     ChemicalEvent,
     GeneralEvent,
+    EquipmentEvent,
+    SoilManagementEvent,
+    BusinessEvent,
+    PestManagementEvent,
     HistoryScan,
 )
 from reviews.models import Review
@@ -22,17 +26,30 @@ from .serializers import (
     ProductionEventSerializer,
     ChemicalEventSerializer,
     GeneralEventSerializer,
+    EquipmentEventSerializer,
+    SoilManagementEventSerializer,
+    BusinessEventSerializer,
+    PestManagementEventSerializer,
     PublicHistorySerializer,
     ListHistoryClassSerializer,
     UpdateChemicalEventSerializer,
     UpdateWeatherEventSerializer,
     UpdateProductionEventSerializer,
     UpdateGeneralEventSerializer,
+    UpdateEquipmentEventSerializer,
+    UpdateSoilManagementEventSerializer,
+    UpdateBusinessEventSerializer,
+    UpdatePestManagementEventSerializer,
 )
 from .constants import (
     WEATHER_EVENT_TYPE,
     PRODUCTION_EVENT_TYPE,
     CHEMICAL_EVENT_TYPE,
+    GENERAL_EVENT_TYPE,
+    EQUIPMENT_EVENT_TYPE,
+    SOIL_MANAGEMENT_EVENT_TYPE,
+    BUSINESS_EVENT_TYPE,
+    PEST_MANAGEMENT_EVENT_TYPE,
     event_map,
     ALLOWED_PERIODS,
 )
@@ -262,38 +279,25 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
         if event_type is None:
             raise Exception("Event type is required")
         event_type = int(event_type)
+        
+        is_mutation = self.action in ["create", "update", "partial_update"]
+        
         if event_type == WEATHER_EVENT_TYPE:
-            if (
-                self.action == "create"
-                or self.action == "update"
-                or self.action == "partial_update"
-            ):
-                return UpdateWeatherEventSerializer
-            return WeatherEventSerializer
+            return UpdateWeatherEventSerializer if is_mutation else WeatherEventSerializer
         elif event_type == PRODUCTION_EVENT_TYPE:
-            if (
-                self.action == "create"
-                or self.action == "update"
-                or self.action == "partial_update"
-            ):
-                return UpdateProductionEventSerializer
-            return ProductionEventSerializer
+            return UpdateProductionEventSerializer if is_mutation else ProductionEventSerializer
         elif event_type == CHEMICAL_EVENT_TYPE:
-            if (
-                self.action == "create"
-                or self.action == "update"
-                or self.action == "partial_update"
-            ):
-                return UpdateChemicalEventSerializer
-            return ChemicalEventSerializer
-        else:
-            if (
-                self.action == "create"
-                or self.action == "update"
-                or self.action == "partial_update"
-            ):
-                return UpdateGeneralEventSerializer
-            return GeneralEventSerializer
+            return UpdateChemicalEventSerializer if is_mutation else ChemicalEventSerializer
+        elif event_type == EQUIPMENT_EVENT_TYPE:
+            return UpdateEquipmentEventSerializer if is_mutation else EquipmentEventSerializer
+        elif event_type == SOIL_MANAGEMENT_EVENT_TYPE:
+            return UpdateSoilManagementEventSerializer if is_mutation else SoilManagementEventSerializer
+        elif event_type == BUSINESS_EVENT_TYPE:
+            return UpdateBusinessEventSerializer if is_mutation else BusinessEventSerializer
+        elif event_type == PEST_MANAGEMENT_EVENT_TYPE:
+            return UpdatePestManagementEventSerializer if is_mutation else PestManagementEventSerializer
+        else:  # GENERAL_EVENT_TYPE
+            return UpdateGeneralEventSerializer if is_mutation else GeneralEventSerializer
 
     def get_queryset(self):
         event_type = (
@@ -301,12 +305,12 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
             if "event_type" in self.request.data
             else self.request.query_params.get("event_type", None)
         )
-        if event_type == WEATHER_EVENT_TYPE:
-            return WeatherEvent.objects.all()
-        elif event_type == PRODUCTION_EVENT_TYPE:
-            return ProductionEvent.objects.all()
-        elif event_type == CHEMICAL_EVENT_TYPE:
-            return ChemicalEvent.objects.all()
+        if event_type is not None:
+            event_type = int(event_type)
+            
+        event_model = event_map.get(event_type)
+        if event_model:
+            return event_model.objects.all()
         else:
             return GeneralEvent.objects.all()
 

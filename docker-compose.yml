@@ -19,7 +19,7 @@ services:
     image: maildev/maildev
     ports:
       - "1080:1080"
-      - "1025:1025"
+      - "1027:1025"
 
   redis:
     image: redis:7.0

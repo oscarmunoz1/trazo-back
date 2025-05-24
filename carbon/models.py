@@ -82,6 +82,64 @@ class CarbonEntry(models.Model):
     def __str__(self):
         return f"{self.type.capitalize()} - {self.amount} ({self.timestamp})"
 
+    @classmethod
+    def calculate_carbon_score(cls, total_emissions, total_offsets, industry_benchmark=None):
+        """
+        Calculate a carbon score on a scale of 1-100.
+        100 is the best (carbon negative), 50 is neutral, <50 is carbon positive.
+        
+        Args:
+            total_emissions: Total emissions in kg CO2e
+            total_offsets: Total offsets in kg CO2e
+            industry_benchmark: Industry average emissions (optional)
+            
+        Returns:
+            int: Carbon score from 1-100
+        """
+        # If no emissions or offsets, return neutral score
+        if total_emissions == 0 and total_offsets == 0:
+            return 50
+            
+        net_carbon = total_emissions - total_offsets
+        
+        # If carbon negative (more offsets than emissions)
+        if net_carbon <= 0:
+            # Scale from 50 (neutral) to 100 (highly negative)
+            # The more negative, the higher the score
+            if total_emissions == 0:
+                return 100  # Perfect score if no emissions but has offsets
+            
+            # Calculate how much more offsets than emissions (as percentage)
+            offset_ratio = abs(net_carbon) / total_emissions
+            
+            # Cap at 100% (or 2x emissions) for max score
+            offset_ratio = min(offset_ratio, 1.0)
+            
+            # Scale from 50 to 100
+            return int(50 + (offset_ratio * 50))
+        
+        # If carbon positive (more emissions than offsets)
+        else:
+            # If we have an industry benchmark to compare against
+            if industry_benchmark and industry_benchmark > 0:
+                # If better than industry average
+                if net_carbon < industry_benchmark:
+                    ratio = net_carbon / industry_benchmark
+                    # Scale from 25 to 50 (50 being carbon neutral)
+                    return int(50 - (ratio * 25))
+                # If worse than industry average
+                else:
+                    ratio = min(net_carbon / industry_benchmark, 2.0)  # Cap at 2x industry average
+                    # Scale from 1 to 25
+                    return max(1, int(25 - (ratio - 1) * 24))
+            
+            # Without industry benchmark, use a simple ratio
+            else:
+                # Calculate ratio of offsets to emissions
+                offset_ratio = total_offsets / total_emissions if total_emissions > 0 else 0
+                # Scale from 1 to 50 (50 being carbon neutral)
+                return int(offset_ratio * 50)
+
 class CarbonCertification(models.Model):
     establishment = models.ForeignKey('company.Establishment', on_delete=models.CASCADE, null=True, blank=True)
     production = models.ForeignKey('history.History', on_delete=models.CASCADE, null=True, blank=True)
@@ -155,6 +213,7 @@ class CarbonReport(models.Model):
     usda_verified = models.BooleanField(default=False)
     cost_savings = models.FloatField(default=0.0, help_text='Cost savings achieved')
     recommendations = models.JSONField(default=list, help_text='List of cost-saving recommendations')
+    document = models.FileField(upload_to='carbon_reports/', null=True, blank=True, help_text='Report document file')
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -202,9 +261,13 @@ class CarbonAuditLog(models.Model):
 
 class SustainabilityBadge(models.Model):
     name = models.CharField(max_length=100, unique=True, help_text='e.g., Gold Tier')
+    description = models.TextField(blank=True)
     criteria = models.JSONField(default=dict, help_text='Criteria for badge award, e.g., net_footprint < 0')
     icon = models.FileField(upload_to='badges/', null=True, blank=True)
-    description = models.TextField(blank=True)
+    minimum_score = models.IntegerField(default=0, help_text='Minimum carbon score to automatically award this badge')
+    is_automatic = models.BooleanField(default=False, help_text='Whether to automatically award this badge based on score')
+    establishments = models.ManyToManyField('company.Establishment', related_name='badges', blank=True)
+    productions = models.ManyToManyField('history.History', related_name='badges', blank=True)
     usda_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)

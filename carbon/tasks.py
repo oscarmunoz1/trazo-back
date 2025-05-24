@@ -76,41 +76,84 @@ def generate_nightly_reports():
 @shared_task
 def award_sustainability_badges():
     """Award sustainability badges based on carbon performance."""
-    # Get all establishments with carbon reports
+    # Get all establishments with carbon entries
     establishments = Establishment.objects.filter(
-        carbonreport__isnull=False
+        carbonentry__isnull=False
     ).distinct()
     
+    # Also get all productions with carbon entries
+    productions = History.objects.filter(
+        carbonentry__isnull=False
+    ).distinct()
+    
+    # Get all automatic badges
+    automatic_badges = SustainabilityBadge.objects.filter(is_automatic=True)
+    
+    # Process establishments
     for establishment in establishments:
-        # Get latest report
-        latest_report = CarbonReport.objects.filter(
+        # Get latest year with entries
+        latest_year = CarbonEntry.objects.filter(
             establishment=establishment
-        ).order_by('-period_end').first()
+        ).order_by('-year').values_list('year', flat=True).first()
         
-        if not latest_report:
+        if not latest_year:
             continue
         
-        # Award badges based on performance
-        if latest_report.net_footprint <= 0:
-            SustainabilityBadge.objects.get_or_create(
-                name='Carbon Neutral',
-                criteria={'net_footprint': 0},
-                icon='badges/carbon-neutral.png'
-            )
+        # Calculate carbon score for this establishment
+        entries = CarbonEntry.objects.filter(establishment=establishment, year=latest_year)
+        total_emissions = entries.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+        total_offsets = entries.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
         
-        if latest_report.carbon_score >= 90:
-            SustainabilityBadge.objects.get_or_create(
-                name='Gold Tier',
-                criteria={'carbon_score': 90},
-                icon='badges/gold.png'
-            )
+        # Get industry benchmark if available
+        industry_benchmark = 0
+        if hasattr(establishment, 'industry'):
+            benchmark = CarbonBenchmark.objects.filter(
+                industry=establishment.industry,
+                year=latest_year
+            ).first()
+            if benchmark:
+                industry_benchmark = benchmark.average_emissions
         
-        if latest_report.total_offsets >= (latest_report.total_emissions * 0.5):
-            SustainabilityBadge.objects.get_or_create(
-                name='Offset Champion',
-                criteria={'offset_ratio': 0.5},
-                icon='badges/offset.png'
-            )
+        # Calculate carbon score
+        carbon_score = CarbonEntry.calculate_carbon_score(
+            total_emissions=total_emissions,
+            total_offsets=total_offsets,
+            industry_benchmark=industry_benchmark
+        )
+        
+        # Award badges based on score
+        for badge in automatic_badges:
+            if carbon_score >= badge.minimum_score:
+                badge.establishments.add(establishment)
+    
+    # Process productions
+    for production in productions:
+        # Calculate carbon score for this production
+        entries = CarbonEntry.objects.filter(production=production)
+        total_emissions = entries.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+        total_offsets = entries.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+        
+        # Get industry benchmark if available
+        industry_benchmark = 0
+        if hasattr(production.establishment, 'industry'):
+            benchmark = CarbonBenchmark.objects.filter(
+                industry=production.establishment.industry,
+                year=production.year
+            ).first()
+            if benchmark:
+                industry_benchmark = benchmark.average_emissions
+        
+        # Calculate carbon score
+        carbon_score = CarbonEntry.calculate_carbon_score(
+            total_emissions=total_emissions,
+            total_offsets=total_offsets,
+            industry_benchmark=industry_benchmark
+        )
+        
+        # Award badges based on score
+        for badge in automatic_badges:
+            if carbon_score >= badge.minimum_score:
+                badge.productions.add(production)
 
 @shared_task
 def cleanup_old_audit_logs():

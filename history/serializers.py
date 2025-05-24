@@ -8,12 +8,20 @@ from .models import (
     GeneralEvent,
     HistoryScan,
     ProductionEvent,
+    EquipmentEvent,
+    SoilManagementEvent,
+    BusinessEvent,
+    PestManagementEvent,
 )
 from .constants import (
     WEATHER_EVENT_TYPE,
     PRODUCTION_EVENT_TYPE,
     CHEMICAL_EVENT_TYPE,
     GENERAL_EVENT_TYPE,
+    EQUIPMENT_EVENT_TYPE,
+    SOIL_MANAGEMENT_EVENT_TYPE,
+    BUSINESS_EVENT_TYPE,
+    PEST_MANAGEMENT_EVENT_TYPE,
 )
 from common.models import Gallery
 from product.models import Product, Parcel
@@ -416,3 +424,91 @@ class HistoryListOptionsSerializer(serializers.ModelSerializer):
 
     def get_period(self, history):
         return f"{history.start_date.strftime('%m/%d/%Y')} - {history.finish_date.strftime('%m/%d/%Y')}"
+
+
+# Equipment Event Serializers
+class UpdateEquipmentEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EquipmentEvent
+        fields = "__all__"
+
+
+class EquipmentEventSerializer(EventSerializer):
+    type = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EquipmentEvent
+        fields = "__all__"
+
+    def get_type(self, equipment_event):
+        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+
+    def get_event_type(self, equipment_event):
+        return EQUIPMENT_EVENT_TYPE
+
+
+# Soil Management Event Serializers
+class UpdateSoilManagementEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SoilManagementEvent
+        fields = "__all__"
+
+
+class SoilManagementEventSerializer(EventSerializer):
+    type = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SoilManagementEvent
+        fields = "__all__"
+
+    def get_type(self, soil_event):
+        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+
+    def get_event_type(self, soil_event):
+        return SOIL_MANAGEMENT_EVENT_TYPE
+
+
+# Business Event Serializers
+class UpdateBusinessEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessEvent
+        fields = "__all__"
+
+
+class BusinessEventSerializer(EventSerializer):
+    type = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BusinessEvent
+        fields = "__all__"
+
+    def get_type(self, business_event):
+        return f"event.business.{business_event.get_type_display().lower().replace(' ', '_')}"
+
+    def get_event_type(self, business_event):
+        return BUSINESS_EVENT_TYPE
+
+
+# Pest Management Event Serializers
+class UpdatePestManagementEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PestManagementEvent
+        fields = "__all__"
+
+
+class PestManagementEventSerializer(EventSerializer):
+    type = serializers.SerializerMethodField()
+    event_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PestManagementEvent
+        fields = "__all__"
+
+    def get_type(self, pest_event):
+        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+
+    def get_event_type(self, pest_event):
+        return PEST_MANAGEMENT_EVENT_TYPE

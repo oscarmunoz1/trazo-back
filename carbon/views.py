@@ -46,6 +46,7 @@ from history.models import History
 from .services.calculator import calculator
 from .services.verification import verification_service
 from .services.certificate import certificate_generator
+from .services.report_generator import report_generator
 from rest_framework import serializers
 
 User = get_user_model()
@@ -152,6 +153,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
+        print("bulk_create")
         entries = request.data
         if not isinstance(entries, list):
             return Response({'error': 'Expected a list of entries'}, status=status.HTTP_400_BAD_REQUEST)
@@ -182,6 +184,8 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def perform_create(self, serializer):
+        print("perform_create")
+        print(serializer.validated_data)
         # Check if the entry is for production-level tracking and restrict to premium users
         if serializer.validated_data.get('production') and (not hasattr(self.request.user, 'subscription_plan') or self.request.user.subscription_plan not in ['premium', 'enterprise']):
             raise permissions.PermissionDenied(detail='Production-level tracking is a premium feature. Upgrade your plan.')
@@ -256,60 +260,58 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(production_id=production_id)
         queryset = queryset.filter(year=year)
 
-        total_emissions = queryset.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
-        total_offsets = queryset.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+        total_emissions = queryset.filter(type='emission').aggregate(Sum('amount'))['amount__sum'] or 0
+        total_offsets = queryset.filter(type='offset').aggregate(Sum('amount'))['amount__sum'] or 0
         net_carbon = total_emissions - total_offsets
-
-        # Get industry average (placeholder logic, adjust based on your needs)
-        industry_average = CarbonBenchmark.objects.filter(year=year).aggregate(Sum('average_emissions'))['average_emissions__sum'] or 0
-
-        # Calculate Carbon Score (1-100, benchmarked against industry average)
-        carbon_score = 100
-        if industry_average > 0:
-            # Simple scoring: lower net carbon relative to industry average gives higher score
-            ratio = net_carbon / industry_average
-            carbon_score = max(1, min(100, int(100 * (1 - ratio))))
-
-        # Calculate year-over-year change (placeholder logic)
-        previous_year = int(year) - 1
-        prev_queryset = CarbonEntry.objects.all()
-        if establishment_id:
-            prev_queryset = prev_queryset.filter(establishment_id=establishment_id)
-        if production_id:
-            prev_queryset = prev_queryset.filter(production_id=production_id)
-        prev_queryset = prev_queryset.filter(year=previous_year)
-
-        prev_total_emissions = prev_queryset.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
-        prev_total_offsets = prev_queryset.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
-        prev_net_carbon = prev_total_emissions - prev_total_offsets
-
-        year_over_year_change = 0
-        if prev_net_carbon > 0:
-            year_over_year_change = ((net_carbon - prev_net_carbon) / prev_net_carbon) * 100
-
-        # Detailed recommendations based on USDA data (placeholder values for illustration)
-        recommendations = []
-        if net_carbon > industry_average:
-            recommendations.append('Consider switching to organic fertilizers to reduce emissions by up to 20% (USDA, 2023).')
-            recommendations.append('Implement drip irrigation systems to save water and reduce emissions by approximately 15% (USDA Climate-Smart Agriculture, 2024).')
-            recommendations.append('Adopt cover cropping practices to sequester carbon and improve soil health, potentially offsetting 10% of emissions (USDA NRCS, 2022).')
+        
+        # Calculate carbon score (0-100 scale)
+        carbon_score = 0
         if total_emissions > 0:
-            recommendations.append('Review fuel usage in machinery; switching to biodiesel blends can cut emissions by 10-15% (USDA Bioenergy Program, 2023).')
-        if total_offsets < (total_emissions * 0.1):
-            recommendations.append('Explore carbon offset programs like tree planting or renewable energy credits to balance your footprint (USDA Conservation Reserve Program, 2024).')
-        if not recommendations:
-            recommendations.append('Your carbon footprint is well-managed. Continue monitoring and consider sharing best practices with peers (USDA Sustainable Agriculture Network).')
-
-        return Response({
+            # Base score on offset percentage with diminishing returns
+            offset_percentage = min(100, (total_offsets / total_emissions) * 100)
+            
+            # Score increases with percentage of offsets
+            if offset_percentage >= 100:
+                carbon_score = 85  # Base score for carbon neutrality
+                # Bonus for going beyond neutrality
+                carbon_score += min(15, ((offset_percentage - 100) / 50) * 15)
+            else:
+                carbon_score = offset_percentage * 0.85  # Scale up to 85 max
+                
+        # Get industry benchmark if available
+        industry_benchmark = 0
+        target_entity = None
+        if establishment_id:
+            try:
+                establishment = Establishment.objects.get(id=establishment_id)
+                # Try to use industry attribute if it exists, otherwise fall back to type
+                industry = None
+                if hasattr(establishment, 'industry') and establishment.industry:
+                    industry = establishment.industry
+                elif establishment.type:
+                    industry = establishment.type
+                
+                if industry:
+                    benchmark = CarbonBenchmark.objects.filter(
+                        industry=industry,
+                        year=year
+                    ).first()
+                    if benchmark:
+                        industry_benchmark = benchmark.average_emissions
+                target_entity = establishment
+            except Establishment.DoesNotExist:
+                pass
+                
+        # Return consistent field names for frontend
+        summary_data = {
             'total_emissions': total_emissions,
             'total_offsets': total_offsets,
             'net_carbon': net_carbon,
-            'industry_average': industry_average,
-            'carbon_score': carbon_score,
-            'year_over_year_change': year_over_year_change,
-            'recommendations': recommendations,
-            'year': int(year)
-        })
+            'carbon_score': round(carbon_score),
+            'industry_average': industry_benchmark
+        }
+        
+        return Response(summary_data)
 
 class CarbonCertificationViewSet(viewsets.ModelViewSet):
     queryset = CarbonCertification.objects.all()
@@ -540,6 +542,44 @@ class CarbonReportViewSet(viewsets.ReadOnlyModelViewSet):
         period_start = request.data.get('period_start')
         period_end = request.data.get('period_end')
 
+        # Check if we're getting data from the new frontend format
+        establishment_id = request.data.get('establishment')
+        if establishment_id and not entity_type:
+            entity_type = 'establishment'
+            entity_id = establishment_id
+
+        # Handle year and report type for period calculation
+        year = request.data.get('year')
+        report_type = request.data.get('reportType')
+        quarter = request.data.get('quarter')
+        
+        if year and report_type and not period_start:
+            # Calculate period_start and period_end based on year and report_type
+            if report_type == 'annual':
+                period_start = f"{year}-01-01"
+                period_end = f"{year}-12-31"
+            elif report_type == 'quarterly' and quarter:
+                # Calculate dates for the specified quarter
+                quarter_months = {
+                    1: (1, 3),  # Q1: Jan-Mar
+                    2: (4, 6),  # Q2: Apr-Jun
+                    3: (7, 9),  # Q3: Jul-Sep
+                    4: (10, 12)  # Q4: Oct-Dec
+                }
+                start_month, end_month = quarter_months.get(int(quarter), (1, 3))
+                period_start = f"{year}-{start_month:02d}-01"
+                
+                # Calculate end date (last day of end month)
+                if end_month in [4, 6, 9, 11]:
+                    end_day = 30
+                elif end_month == 2:
+                    # Simple leap year check
+                    end_day = 29 if (int(year) % 4 == 0 and int(year) % 100 != 0) or (int(year) % 400 == 0) else 28
+                else:
+                    end_day = 31
+                
+                period_end = f"{year}-{end_month:02d}-{end_day}"
+
         if entity_type not in ['establishment', 'production'] or not entity_id:
             return Response({'error': 'Invalid entity type or ID'}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -566,21 +606,56 @@ class CarbonReportViewSet(viewsets.ReadOnlyModelViewSet):
         net_footprint = total_emissions - total_offsets
         carbon_score = max(0, min(100, int(100 - (net_footprint / max(total_emissions, 1)) * 100)))
 
-        report = CarbonReport(
-            establishment=entity if entity_type == 'establishment' else None,
-            production=entity if entity_type == 'production' else None,
-            period_start=period_start if period_start else timezone.now().date(),
-            period_end=period_end if period_end else timezone.now().date(),
-            total_emissions=total_emissions,
-            total_offsets=total_offsets,
-            net_footprint=net_footprint,
-            carbon_score=carbon_score,
-            generated_at=timezone.now()
-        )
-        report.save()
+        # Create the report object
+        try:
+            report = CarbonReport(
+                establishment=entity if entity_type == 'establishment' else None,
+                production=entity if entity_type == 'production' else None,
+                period_start=period_start if period_start else timezone.now().date(),
+                period_end=period_end if period_end else timezone.now().date(),
+                total_emissions=total_emissions,
+                total_offsets=total_offsets,
+                net_footprint=net_footprint,
+                carbon_score=carbon_score,
+                generated_at=timezone.now()
+            )
+            
+            # Handle document upload if provided
+            document = request.data.get('document')
+            if document and hasattr(document, 'file'):
+                report.document = document
+                document_source = 'uploaded'
+            else:
+                # Generate a PDF report when no document is uploaded
+                report.save()  # Save first to get an ID
+                try:
+                    # Generate PDF using the report generator
+                    document_url = report_generator.generate_report(report)
+                    report.document = document_url
+                    document_source = 'generated'
+                except Exception as e:
+                    # Log the PDF generation error but continue
+                    print(f"Error generating PDF: {str(e)}")
+                    document_source = 'none'
+            
+            report.save()
+            
+            # Add additional logging
+            log_details = f'Generated {report_type} report for {entity_type} {entity_id}'
+            if document_source != 'none':
+                log_details += f' with {document_source} document'
+                
+            CarbonAuditLog.objects.create(
+                report=report,
+                user=request.user,
+                action='create',
+                details=log_details
+            )
 
-        serializer = CarbonReportSerializer(report)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            serializer = CarbonReportSerializer(report)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=True, methods=['get'], url_path='summary')
     def summary(self, request, pk=None):
@@ -1023,45 +1098,236 @@ class PublicProductionViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['get'], url_path='qr-summary')
     def qr_summary(self, request, pk=None):
-        production_id = pk
-        year = request.query_params.get('year', timezone.now().year)
-        entries = CarbonEntry.objects.filter(production_id=production_id, year=year)
-        total_emissions = entries.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
-        total_offsets = entries.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
-        net_carbon = total_emissions - total_offsets
-        carbon_score = 100
-        industry_average = CarbonBenchmark.objects.filter(year=year).aggregate(Sum('average_emissions'))['average_emissions__sum'] or 0
-        if industry_average > 0:
-            ratio = net_carbon / industry_average
-            carbon_score = max(1, min(100, int(100 * (1 - ratio))))
-        relatable_footprint = f"{net_carbon / 0.4:.1f} miles driven"
-        badges = [
-            {"name": "USDA Organic", "icon": "organic", "isVerified": True, "description": "Certified organic."},
-        ]
-        timeline = []  # Could be filled with production events if needed
-        # Placeholder farmer info
-        farmer = {
-            "name": "Test Farmer",
-            "photo": "",
-            "bio": "Committed to sustainability.",
-            "generation": 3,
-            "location": "California, USA",
-            "certifications": ["USDA Organic"],
-            "sustainabilityInitiatives": ["Drip irrigation", "Cover cropping"],
-            "carbonReduction": 20,
-            "yearsOfPractice": 10
-        }
-        return Response({
-            "carbonScore": carbon_score,
-            "netFootprint": net_carbon,
-            "relatableFootprint": relatable_footprint,
-            "badges": badges,
-            "farmer": farmer,
-            "timeline": timeline,
-            "isUsdaVerified": True,
-            "verificationDate": str(timezone.now().date()),
-            "socialProof": {"totalScans": 100, "totalOffsets": 10, "averageRating": 4.8}
-        })
+        """
+        Get comprehensive consumer-facing summary for a production, accessed via QR code scan
+        """
+        try:
+            production = History.objects.get(id=pk)
+            
+            # Get carbon report for this production
+            carbon_report = CarbonReport.objects.filter(production=production).first()
+            
+            # Get badges assigned to this production
+            badges_data = []
+            for badge in production.badges.all():
+                badges_data.append({
+                    'id': str(badge.id),
+                    'name': badge.name,
+                    'icon': badge.icon.url if badge.icon else None,
+                    'description': badge.description,
+                    'isVerified': badge.usda_verified,
+                    'level': 'gold' if 'Gold' in badge.name else 
+                             'silver' if 'Silver' in badge.name else
+                             'bronze' if 'Bronze' in badge.name else 'platinum',
+                    'dateAchieved': timezone.now().strftime('%Y-%m-%d')
+                })
+            
+            # Get carbon entries for this production
+            carbon_entries = CarbonEntry.objects.filter(production=production)
+            
+            # Calculate emissions by category
+            emissions_by_category = {}
+            emissions_by_source = {}
+            offsets_by_action = {}
+            total_emissions = 0
+            total_offsets = 0
+            
+            for entry in carbon_entries:
+                if entry.type == 'emission':
+                    total_emissions += entry.co2e_amount
+                    
+                    # Group by category
+                    category = entry.source.category if hasattr(entry.source, 'category') and entry.source.category else 'other'
+                    if category in emissions_by_category:
+                        emissions_by_category[category] += entry.co2e_amount
+                    else:
+                        emissions_by_category[category] = entry.co2e_amount
+                        
+                    # Group by source
+                    source = entry.source.name if hasattr(entry.source, 'name') and entry.source.name else 'unknown'
+                    if source in emissions_by_source:
+                        emissions_by_source[source] += entry.co2e_amount
+                    else:
+                        emissions_by_source[source] = entry.co2e_amount
+                        
+                elif entry.type == 'offset':
+                    total_offsets += entry.co2e_amount
+                    
+                    # Group by source (action)
+                    action = entry.source.name if hasattr(entry.source, 'name') and entry.source.name else 'other offsets'
+                    if action in offsets_by_action:
+                        offsets_by_action[action] += entry.co2e_amount
+                    else:
+                        offsets_by_action[action] = entry.co2e_amount
+            
+            # Get benchmark for this product type to calculate industry percentile
+            benchmarks = CarbonBenchmark.objects.filter(
+                crop_type__icontains=production.product.name,
+                year=carbon_entries.first().year if carbon_entries.exists() else timezone.now().year
+            ).first()
+            
+            industry_average = benchmarks.average_emissions if benchmarks else 0.5  # Default if no benchmark
+            
+            # Calculate net footprint
+            net_footprint = total_emissions - total_offsets
+            
+            # Calculate carbon score (1-100)
+            carbon_score = CarbonEntry.calculate_carbon_score(
+                total_emissions, 
+                total_offsets,
+                industry_average * production.production_amount if hasattr(production, 'production_amount') and production.production_amount else total_emissions
+            )
+            
+            # Calculate industry percentile (if better than average, higher percentile)
+            if benchmarks:
+                # Convert to per kg for comparison
+                net_per_kg = net_footprint / production.production_amount if hasattr(production, 'production_amount') and production.production_amount else 0
+                if net_per_kg < benchmarks.min_emissions:
+                    industry_percentile = 95  # Top 5%
+                elif net_per_kg < benchmarks.average_emissions:
+                    # Linear scale between min and average
+                    industry_percentile = 50 + 45 * ((benchmarks.average_emissions - net_per_kg) / (benchmarks.average_emissions - benchmarks.min_emissions))
+                else:
+                    # Linear scale between average and max
+                    industry_percentile = max(5, 50 * ((benchmarks.max_emissions - net_per_kg) / (benchmarks.max_emissions - benchmarks.average_emissions)))
+            else:
+                industry_percentile = 50  # Default to average
+            
+            # Get relatable footprint
+            if net_footprint < 1:
+                relatable_footprint = f"like driving {round(net_footprint * 4, 1)} miles"
+            elif net_footprint < 10:
+                relatable_footprint = f"like {round(net_footprint / 8, 1)} gallons of gasoline"
+            else:
+                relatable_footprint = f"like {round(net_footprint / 1000, 2)} metric tons of CO2"
+            
+            # Get USDA verification status
+            is_usda_verified = carbon_report.usda_verified if carbon_report else False
+            
+            # Get social proof metrics
+            # For this demo, we're using dummy data but this could be real data in production
+            social_proof = {
+                'totalScans': 532,
+                'totalOffsets': 230,
+                'totalUsers': 180,
+                'averageRating': 4.2
+            }
+            
+            # Get timeline events from production events
+            timeline_events = []
+            
+            # Add weather events
+            from history.models import WeatherEvent
+            weather_events = WeatherEvent.objects.filter(history=production).order_by('date')
+            for event in weather_events:
+                timeline_events.append({
+                    'id': str(event.id),
+                    'date': event.date.strftime('%Y-%m-%d'),
+                    'title': event.get_type_display(),
+                    'description': event.description or event.observation,
+                    'type': 'weather',
+                    'carbonImpact': 0,  # Can be calculated if data is available
+                })
+            
+            # Add chemical events
+            from history.models import ChemicalEvent
+            chemical_events = ChemicalEvent.objects.filter(history=production).order_by('date')
+            for event in chemical_events:
+                timeline_events.append({
+                    'id': str(event.id),
+                    'date': event.date.strftime('%Y-%m-%d'),
+                    'title': f"{event.get_type_display()} Application",
+                    'description': event.description or f"{event.commercial_name} ({event.volume})",
+                    'type': 'chemical',
+                    'carbonImpact': 0.2,  # Example impact
+                })
+            
+            # Add production events
+            from history.models import ProductionEvent
+            production_events = ProductionEvent.objects.filter(history=production).order_by('date')
+            for event in production_events:
+                timeline_events.append({
+                    'id': str(event.id),
+                    'date': event.date.strftime('%Y-%m-%d'),
+                    'title': event.get_type_display(),
+                    'description': event.description or event.observation,
+                    'type': 'production',
+                    'carbonImpact': 0.1 if event.type == 'HA' else -0.1,  # Example: harvesting has positive impact, other activities might reduce emissions
+                })
+            
+            # Sort timeline by date
+            timeline_events.sort(key=lambda x: x['date'])
+            
+            # Get farmer data (using production attributes if available)
+            farmer_data = {
+                'name': getattr(production, 'farmer_name', production.operator.get_full_name() if production.operator else 'Farmer'),
+                'photo': getattr(production, 'farmer_photo', ''),
+                'bio': getattr(production, 'farmer_bio', ''),
+                'generation': getattr(production, 'farmer_generation', 3),
+                'location': getattr(production, 'farmer_location', production.parcel.establishment.city if production.parcel and production.parcel.establishment else 'California'),
+                'certifications': getattr(production, 'farmer_certifications', ['Organic']),
+                'sustainabilityInitiatives': getattr(production, 'sustainability_initiatives', [
+                    'Water conservation',
+                    'Renewable energy',
+                    'Soil health practices'
+                ]),
+                'carbonReduction': getattr(production, 'carbon_reduction', 15000),
+                'yearsOfPractice': getattr(production, 'years_of_practice', 10)
+            }
+            
+            # Get recommendations from carbon report or use default
+            recommendations = []
+            if carbon_report and carbon_report.recommendations:
+                for rec in carbon_report.recommendations:
+                    if isinstance(rec, dict) and 'title' in rec:
+                        recommendations.append(rec['title'])
+            
+            # If we don't have enough recommendations, add default ones
+            default_recs = [
+                'Efficient water irrigation',
+                'Organic fertilizers',
+                'Solar power utilization',
+                'Reduced pesticide usage'
+            ]
+            
+            for rec in default_recs:
+                if rec not in recommendations and len(recommendations) < 4:
+                    recommendations.append(rec)
+            
+            # Build the response
+            response_data = {
+                'carbonScore': carbon_score,
+                'totalEmissions': total_emissions,
+                'totalOffsets': total_offsets,
+                'netFootprint': net_footprint,
+                'relatableFootprint': relatable_footprint,
+                'industryPercentile': round(industry_percentile),
+                'industryAverage': industry_average,
+                'badges': badges_data,
+                'farmer': farmer_data,
+                'farmerStory': getattr(production, 'farmer_story', "Our farm has been in the family for generations, and we're committed to sustainable practices that preserve the land for future generations."),
+                'timeline': timeline_events,
+                'isUsdaVerified': is_usda_verified,
+                'verificationDate': timezone.now().strftime('%Y-%m-%d') if is_usda_verified else None,
+                'socialProof': social_proof,
+                'emissionsByCategory': emissions_by_category,
+                'emissionsBySource': emissions_by_source,
+                'offsetsByAction': offsets_by_action,
+                'recommendations': recommendations
+            }
+            
+            return Response(response_data)
+            
+        except History.DoesNotExist:
+            return Response(
+                {"error": "Production not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=True, methods=['get'], url_path='summary')
     def summary(self, request, pk=None):
@@ -1083,6 +1349,133 @@ class PublicProductionViewSet(viewsets.ViewSet):
             "carbonScore": carbon_score,
             "year": int(year)
         })
+
+    @action(detail=True, methods=['get'], url_path='recommendations')
+    def recommendations(self, request, pk=None):
+        """
+        Get sustainability recommendations for a production based on carbon footprint.
+        Adapted to be more consumer-friendly, focusing on what's already being done
+        rather than suggestions for the producer.
+        """
+        production_id = pk
+        year = request.query_params.get('year', timezone.now().year)
+        
+        try:
+            production = History.objects.get(id=production_id)
+            
+            # Get the carbon data for this production
+            carbon_entries = CarbonEntry.objects.filter(
+                production_id=production_id, 
+                year=year
+            )
+            
+            # Get the practices applied
+            sustainable_practices = []
+            
+            # Water conservation
+            if CarbonEntry.objects.filter(
+                production_id=production_id,
+                source__name__icontains='irrigation'
+            ).exists():
+                sustainable_practices.append({
+                    "id": "water-conservation",
+                    "title": "Efficient Irrigation",
+                    "description": "This producer uses water-saving irrigation techniques",
+                    "impact": "Reduces water usage by up to 30% compared to conventional methods",
+                    "costSavings": "Saves approximately $500 per acre annually",
+                    "implementation": "Drip irrigation and soil moisture monitoring",
+                    "category": "water"
+                })
+            
+            # Organic fertilizers
+            if CarbonEntry.objects.filter(
+                production_id=production_id,
+                source__name__icontains='organic fertilizer'
+            ).exists():
+                sustainable_practices.append({
+                    "id": "organic-fertilizer",
+                    "title": "Organic Fertilizers",
+                    "description": "This product is grown with natural fertilizers",
+                    "impact": "Reduces chemical runoff and builds soil health",
+                    "costSavings": "Improves soil quality over time",
+                    "implementation": "Compost and natural nutrient sources",
+                    "category": "soil"
+                })
+            
+            # Renewable energy
+            if CarbonEntry.objects.filter(
+                production_id=production_id,
+                source__name__icontains='solar' 
+            ).exists():
+                sustainable_practices.append({
+                    "id": "renewable-energy",
+                    "title": "Solar Powered",
+                    "description": "This farm uses solar energy in its operations",
+                    "impact": "Reduces fossil fuel emissions by up to 40%",
+                    "costSavings": "Saves approximately $2,000 annually in energy costs",
+                    "implementation": "Solar panels power farm operations",
+                    "category": "energy"
+                })
+                
+            # Add some default practices if none found
+            if not sustainable_practices:
+                sustainable_practices = [
+                    {
+                        "id": "crop-rotation",
+                        "title": "Crop Rotation",
+                        "description": "This farm practices crop rotation to maintain soil health",
+                        "impact": "Reduces pest problems and improves soil fertility",
+                        "costSavings": "Reduces fertilizer needs by 20%",
+                        "implementation": "Systematically changes crops in the same area",
+                        "category": "soil"
+                    },
+                    {
+                        "id": "integrated-pest-management",
+                        "title": "Reduced Pesticide Use",
+                        "description": "Uses integrated pest management to minimize chemical use",
+                        "impact": "Reduces harmful chemical runoff by up to 50%",
+                        "costSavings": "Saves on expensive pesticides",
+                        "implementation": "Natural predators and targeted treatments",
+                        "category": "biodiversity"
+                    }
+                ]
+            
+            # Get actual emissions data for context
+            emissions_by_category = {}
+            total_emissions = 0
+            total_offsets = 0
+            
+            for entry in carbon_entries:
+                if entry.type == 'emission':
+                    total_emissions += entry.amount
+                    category = entry.source.category if hasattr(entry.source, 'category') else 'other'
+                    if category in emissions_by_category:
+                        emissions_by_category[category] += entry.amount
+                    else:
+                        emissions_by_category[category] = entry.amount
+                elif entry.type == 'offset':
+                    total_offsets += entry.amount
+            
+            # Calculate net footprint
+            net_footprint = total_emissions - total_offsets
+                
+            return Response({
+                "recommendations": sustainable_practices,
+                "emissionsByCategory": emissions_by_category,
+                "totalEmissions": total_emissions,
+                "totalOffsets": total_offsets,
+                "netFootprint": net_footprint
+            })
+        except History.DoesNotExist:
+            return Response(
+                {"error": "Production not found"}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {"error": str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 class CarbonOffsetViewSet(viewsets.ViewSet):
     permission_classes = []  # No authentication required (adjust as needed)
@@ -1116,3 +1509,95 @@ class CarbonProductionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = History.objects.all()
     serializer_class = ProductionSerializer
     permission_classes = []  # Public
+
+
+# Real-time Carbon Calculation API
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from carbon.services.event_carbon_calculator import EventCarbonCalculator
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def calculate_event_carbon_impact(request):
+    """
+    Real-time carbon calculation API for event forms.
+    Calculates carbon impact without creating database entries.
+    """
+    try:
+        event_type = request.data.get('event_type')  # 'chemical', 'production', 'weather', 'general'
+        event_data = request.data.get('event_data', {})
+        
+        if not event_type:
+            return Response(
+                {'error': 'event_type is required'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        calculator = EventCarbonCalculator()
+        
+        # Create a mock event object for calculation
+        class MockEvent:
+            def __init__(self, data):
+                for key, value in data.items():
+                    setattr(self, key, value)
+                # Set defaults if not provided
+                if not hasattr(self, 'type'):
+                    self.type = 'FE'  # Default fertilizer
+                if not hasattr(self, 'volume'):
+                    self.volume = '10'
+                if not hasattr(self, 'concentration'):
+                    self.concentration = '10-10-10'
+                if not hasattr(self, 'area'):
+                    self.area = '1'
+                if not hasattr(self, 'way_of_application'):
+                    self.way_of_application = 'broadcast'
+                if not hasattr(self, 'observation'):
+                    self.observation = ''
+                if not hasattr(self, 'description'):
+                    self.description = 'Event preview'
+        
+        mock_event = MockEvent(event_data)
+        
+        # Calculate based on event type
+        if event_type == 'chemical':
+            calculation_result = calculator.calculate_chemical_event_impact(mock_event)
+        elif event_type == 'production':
+            calculation_result = calculator.calculate_production_event_impact(mock_event)
+        elif event_type == 'weather':
+            calculation_result = calculator.calculate_weather_event_impact(mock_event)
+        elif event_type == 'equipment':
+            calculation_result = calculator.calculate_equipment_event_impact(mock_event)
+        elif event_type == 'soil_management':
+            calculation_result = calculator.calculate_soil_management_event_impact(mock_event)
+        elif event_type == 'business':
+            calculation_result = calculator.calculate_business_event_impact(mock_event)
+        elif event_type == 'pest_management':
+            calculation_result = calculator.calculate_pest_management_event_impact(mock_event)
+        else:
+            # General or unknown event type
+            calculation_result = {
+                'co2e': 0.1,
+                'efficiency_score': 50.0,
+                'usda_verified': False,
+                'calculation_method': 'general_event',
+                'recommendations': []
+            }
+        
+        # Add helpful metadata for the frontend
+        calculation_result['event_type'] = event_type
+        calculation_result['timestamp'] = timezone.now().isoformat()
+        
+        return Response(calculation_result, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {
+                'error': 'Failed to calculate carbon impact',
+                'details': str(e),
+                'co2e': 0.0,
+                'efficiency_score': 50.0,
+                'usda_verified': False
+            }, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

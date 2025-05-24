@@ -12,7 +12,9 @@ from .models import (
     GreenPoints,
     CarbonOffsetProject,
     CarbonOffsetPurchase,
-    CarbonOffsetCertificate
+    CarbonOffsetCertificate,
+    Establishment,
+    History
 )
 
 class CarbonSourceSerializer(serializers.ModelSerializer):
@@ -26,24 +28,52 @@ class CarbonOffsetActionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class CarbonEntrySerializer(serializers.ModelSerializer):
-    establishment_id = serializers.PrimaryKeyRelatedField(queryset=CarbonEntry._meta.get_field('establishment').related_model.objects.all(), source='establishment', required=False, allow_null=True)
-    production_id = serializers.PrimaryKeyRelatedField(queryset=CarbonEntry._meta.get_field('production').related_model.objects.all(), source='production', required=False, allow_null=True)
-    source_id = serializers.PrimaryKeyRelatedField(queryset=CarbonSource.objects.all(), source='source')
+    establishment_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    production_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    source_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
         model = CarbonEntry
-        fields = [
-            'id', 'establishment_id', 'production_id', 'type', 'source_id', 'amount', 'year', 'timestamp', 'description', 'cost', 'iot_device_id', 'usda_verified', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ('created_by', 'timestamp', 'created_at', 'updated_at')
+        fields = ['id', 'establishment', 'production', 'type', 'amount', 'year', 
+                  'description', 'source', 'source_id', 'created_at', 'created_by',
+                  'usda_verified', 'establishment_id', 'production_id']
+        read_only_fields = ['created_at', 'created_by', 'usda_verified']
 
     def validate(self, data):
+        # Handle both establishment and establishment_id
         establishment = data.get('establishment')
+        establishment_id = data.pop('establishment_id', None)
+        
+        if establishment_id and not establishment:
+            try:
+                data['establishment'] = Establishment.objects.get(id=establishment_id)
+            except Establishment.DoesNotExist:
+                raise serializers.ValidationError(f"Establishment with ID {establishment_id} not found")
+        
+        # Handle both production and production_id
         production = data.get('production')
-        if not establishment and not production:
+        production_id = data.pop('production_id', None)
+        
+        if production_id and not production:
+            try:
+                data['production'] = History.objects.get(id=production_id)
+            except History.DoesNotExist:
+                raise serializers.ValidationError(f"Production with ID {production_id} not found")
+        
+        # Handle both source and source_id  
+        source = data.get('source')
+        source_id = data.pop('source_id', None)
+        
+        if source_id and not source:
+            try:
+                data['source'] = CarbonSource.objects.get(id=source_id)
+            except CarbonSource.DoesNotExist:
+                raise serializers.ValidationError(f"Carbon source with ID {source_id} not found")
+        
+        # Validate that either establishment or production is provided
+        if not data.get('establishment') and not data.get('production'):
             raise serializers.ValidationError("Either establishment or production must be set.")
-        if establishment and production:
-            raise serializers.ValidationError("Only one of establishment or production can be set.")
+            
         return data
 
     def create(self, validated_data):

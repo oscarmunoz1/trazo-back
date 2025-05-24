@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet
+from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact
 
 router = DefaultRouter()
 router.register(r'sources', views.CarbonSourceViewSet)
@@ -26,4 +26,5 @@ router.register(r'productions-flat', CarbonProductionViewSet, basename='carbon-p
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('calculate-event-impact/', calculate_event_carbon_impact, name='calculate-event-carbon-impact'),
 ] 

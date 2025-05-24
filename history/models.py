@@ -309,3 +309,148 @@ class HistoryScan(models.Model):
     city = models.CharField(max_length=30, blank=True, null=True)
     country = models.CharField(max_length=30, blank=True, null=True)
     comment = models.TextField(blank=True, null=True)
+
+
+class EquipmentEvent(CommonEvent):
+    """Events related to equipment maintenance, repairs, and fuel consumption"""
+    
+    # Equipment event types
+    MAINTENANCE = "MA"
+    REPAIR = "RE" 
+    CALIBRATION = "CA"
+    FUEL_CONSUMPTION = "FC"
+    BREAKDOWN = "BR"
+    INSPECTION = "IN"
+    
+    EQUIPMENT_TYPE_CHOICES = [
+        (MAINTENANCE, "Maintenance"),
+        (REPAIR, "Repair"),
+        (CALIBRATION, "Calibration"),
+        (FUEL_CONSUMPTION, "Fuel Consumption"),
+        (BREAKDOWN, "Breakdown"),
+        (INSPECTION, "Inspection"),
+    ]
+    
+    type = models.CharField(
+        max_length=2, choices=EQUIPMENT_TYPE_CHOICES, default=MAINTENANCE
+    )
+    equipment_name = models.CharField(max_length=100, blank=True)
+    fuel_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    fuel_type = models.CharField(max_length=50, blank=True)  # diesel, gasoline, etc.
+    maintenance_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    hours_used = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    area_covered = models.CharField(max_length=100, blank=True)
+    
+    class Meta:
+        verbose_name = "Equipment Event"
+        verbose_name_plural = "Equipment Events"
+
+
+class SoilManagementEvent(CommonEvent):
+    """Events related to soil testing, amendments, and organic matter management"""
+    
+    # Soil management event types
+    SOIL_TEST = "ST"
+    PH_ADJUSTMENT = "PA"
+    ORGANIC_MATTER = "OM"
+    COVER_CROP = "CC"
+    TILLAGE = "TI"
+    COMPOSTING = "CO"
+    
+    SOIL_TYPE_CHOICES = [
+        (SOIL_TEST, "Soil Test"),
+        (PH_ADJUSTMENT, "pH Adjustment"),
+        (ORGANIC_MATTER, "Organic Matter Addition"),
+        (COVER_CROP, "Cover Crop"),
+        (TILLAGE, "Tillage"),
+        (COMPOSTING, "Composting"),
+    ]
+    
+    type = models.CharField(
+        max_length=2, choices=SOIL_TYPE_CHOICES, default=SOIL_TEST
+    )
+    soil_ph = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    organic_matter_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    amendment_type = models.CharField(max_length=100, blank=True)
+    amendment_amount = models.CharField(max_length=100, blank=True)
+    test_results = models.JSONField(null=True, blank=True)  # Store complex test data
+    carbon_sequestration_potential = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Soil Management Event"
+        verbose_name_plural = "Soil Management Events"
+
+
+class BusinessEvent(CommonEvent):
+    """Events related to business operations, sales, certifications, and compliance"""
+    
+    # Business event types
+    HARVEST_SALE = "HS"
+    CERTIFICATION = "CE"
+    INSPECTION = "IN"
+    INSURANCE = "IS"
+    MARKET_ANALYSIS = "MA"
+    CONTRACT = "CT"
+    COMPLIANCE = "CM"
+    
+    BUSINESS_TYPE_CHOICES = [
+        (HARVEST_SALE, "Harvest Sale"),
+        (CERTIFICATION, "Certification"),
+        (INSPECTION, "Inspection"),
+        (INSURANCE, "Insurance"),
+        (MARKET_ANALYSIS, "Market Analysis"),
+        (CONTRACT, "Contract"),
+        (COMPLIANCE, "Compliance"),
+    ]
+    
+    type = models.CharField(
+        max_length=2, choices=BUSINESS_TYPE_CHOICES, default=HARVEST_SALE
+    )
+    revenue_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    quantity_sold = models.CharField(max_length=100, blank=True)
+    buyer_name = models.CharField(max_length=200, blank=True)
+    certification_type = models.CharField(max_length=100, blank=True)  # Organic, Carbon Credit, etc.
+    inspector_name = models.CharField(max_length=200, blank=True)
+    compliance_status = models.CharField(max_length=50, blank=True)
+    carbon_credits_earned = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    
+    class Meta:
+        verbose_name = "Business Event"
+        verbose_name_plural = "Business Events"
+
+
+class PestManagementEvent(CommonEvent):
+    """Events related to pest monitoring, beneficial insect releases, and IPM practices"""
+    
+    # Pest management event types
+    SCOUTING = "SC"
+    BENEFICIAL_RELEASE = "BR"
+    TRAP_MONITORING = "TM"
+    PEST_IDENTIFICATION = "PI"
+    THRESHOLD_ASSESSMENT = "TA"
+    IPM_IMPLEMENTATION = "IP"
+    
+    PEST_TYPE_CHOICES = [
+        (SCOUTING, "Scouting"),
+        (BENEFICIAL_RELEASE, "Beneficial Release"),
+        (TRAP_MONITORING, "Trap Monitoring"),
+        (PEST_IDENTIFICATION, "Pest Identification"),
+        (THRESHOLD_ASSESSMENT, "Threshold Assessment"),
+        (IPM_IMPLEMENTATION, "IPM Implementation"),
+    ]
+    
+    type = models.CharField(
+        max_length=2, choices=PEST_TYPE_CHOICES, default=SCOUTING
+    )
+    pest_species = models.CharField(max_length=200, blank=True)
+    pest_pressure_level = models.CharField(max_length=50, blank=True)  # Low, Medium, High
+    beneficial_species = models.CharField(max_length=200, blank=True)
+    release_quantity = models.CharField(max_length=100, blank=True)
+    trap_count = models.IntegerField(null=True, blank=True)
+    damage_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    action_threshold_met = models.BooleanField(default=False)
+    ipm_strategy = models.TextField(blank=True)
+    
+    class Meta:
+        verbose_name = "Pest Management Event"
+        verbose_name_plural = "Pest Management Events"
