@@ -276,6 +276,17 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
             if "event_type" in self.request.data
             else self.request.query_params.get("event_type", None)
         )
+        
+        # For retrieve actions without event_type, we'll determine it in get_object
+        # and store it for later use
+        if event_type is None and self.action == "retrieve":
+            # Check if we've already determined the event type
+            if hasattr(self, '_determined_event_type'):
+                event_type = self._determined_event_type
+            else:
+                # Default to general for now, will be corrected in retrieve method
+                event_type = GENERAL_EVENT_TYPE
+        
         if event_type is None:
             raise Exception("Event type is required")
         event_type = int(event_type)
@@ -305,14 +316,134 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
             if "event_type" in self.request.data
             else self.request.query_params.get("event_type", None)
         )
+        
+        # For retrieve actions without event_type, return a special marker
+        if event_type is None and self.action == "retrieve":
+            # We'll handle this in get_object method
+            return None
+        
         if event_type is not None:
             event_type = int(event_type)
             
         event_model = event_map.get(event_type)
         if event_model:
-            return event_model.objects.all()
+            queryset = event_model.objects.all()
         else:
-            return GeneralEvent.objects.all()
+            queryset = GeneralEvent.objects.all()
+        
+        # Filter by company and establishment if they are set
+        # Events are connected through: Event -> History -> Parcel -> Establishment -> Company
+        if hasattr(self, 'company') and self.company is not None:
+            queryset = queryset.filter(history__parcel__establishment__company=self.company)
+        
+        if hasattr(self, 'establishment') and self.establishment is not None:
+            queryset = queryset.filter(history__parcel__establishment=self.establishment)
+            
+        return queryset
+
+    def get_object(self):
+        """
+        Override get_object to handle cross-model lookups when event_type is not specified
+        """
+        event_type = self.request.query_params.get("event_type", None)
+        lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+        event_id = self.kwargs[lookup_url_kwarg]
+
+        # If event_type is specified, only search in that specific event type
+        if event_type is not None:
+            try:
+                event_type = int(event_type)
+                event_model = event_map.get(event_type)
+                
+                if event_model:
+                    queryset = event_model.objects.all()
+                    
+                    # Apply the same filtering as in get_queryset
+                    if hasattr(self, 'company') and self.company is not None:
+                        queryset = queryset.filter(history__parcel__establishment__company=self.company)
+                    
+                    if hasattr(self, 'establishment') and self.establishment is not None:
+                        queryset = queryset.filter(history__parcel__establishment=self.establishment)
+                    
+                    obj = queryset.get(pk=event_id)
+                    # Check permissions
+                    self.check_object_permissions(self.request, obj)
+                    # Store the determined event type for serializer selection
+                    self._determined_event_type = event_type
+                    return obj
+                    
+            except (ValueError, event_model.DoesNotExist):
+                # If the specified event_type doesn't contain this event, raise 404
+                from django.http import Http404
+                raise Http404(f"Event with ID {event_id} not found in event type {event_type}")
+
+        # For actions without event_type parameter, search across all event types
+        if self.action in ["update", "partial_update", "retrieve"]:
+            # Try to find the event across all event types
+            
+            # Apply company/establishment filtering to each model
+            for event_type_id, event_model in event_map.items():
+                try:
+                    queryset = event_model.objects.all()
+                    
+                    # Apply the same filtering as in get_queryset
+                    if hasattr(self, 'company') and self.company is not None:
+                        queryset = queryset.filter(history__parcel__establishment__company=self.company)
+                    
+                    if hasattr(self, 'establishment') and self.establishment is not None:
+                        queryset = queryset.filter(history__parcel__establishment=self.establishment)
+                    
+                    obj = queryset.get(pk=event_id)
+                    # Check permissions
+                    self.check_object_permissions(self.request, obj)
+                    # Store the determined event type for serializer selection
+                    self._determined_event_type = event_type_id
+                    return obj
+                except event_model.DoesNotExist:
+                    continue
+            
+            # If not found in any event type, raise 404
+            from django.http import Http404
+            raise Http404("Event not found")
+        
+        # Use default behavior for other cases
+        return super().get_object()
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Override retrieve to handle event_type determination
+        """
+        instance = self.get_object()
+        
+        # If we determined the event type during get_object, update the serializer
+        if hasattr(self, '_determined_event_type'):
+            # Force re-evaluation of serializer class with correct event type
+            event_type = self._determined_event_type
+            
+            # Get the correct serializer class
+            if event_type == WEATHER_EVENT_TYPE:
+                serializer_class = WeatherEventSerializer
+            elif event_type == PRODUCTION_EVENT_TYPE:
+                serializer_class = ProductionEventSerializer
+            elif event_type == CHEMICAL_EVENT_TYPE:
+                serializer_class = ChemicalEventSerializer
+            elif event_type == EQUIPMENT_EVENT_TYPE:
+                serializer_class = EquipmentEventSerializer
+            elif event_type == SOIL_MANAGEMENT_EVENT_TYPE:
+                serializer_class = SoilManagementEventSerializer
+            elif event_type == BUSINESS_EVENT_TYPE:
+                serializer_class = BusinessEventSerializer
+            elif event_type == PEST_MANAGEMENT_EVENT_TYPE:
+                serializer_class = PestManagementEventSerializer
+            else:  # GENERAL_EVENT_TYPE
+                serializer_class = GeneralEventSerializer
+            
+            serializer = serializer_class(instance)
+            return Response(serializer.data)
+        
+        # Default behavior
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         parcels = self.request.POST.getlist("parcels", None)
@@ -343,3 +474,42 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
                     **serializer.validated_data,
                 )
                 event.save()
+
+    def update(self, request, *args, **kwargs):
+        """
+        Override update to prevent changing event types after creation
+        """
+        # Get the current instance first to determine its type
+        instance = self.get_object()
+        
+        # Determine the current event type based on the model
+        current_event_type = None
+        for event_type_id, event_model in event_map.items():
+            if isinstance(instance, event_model):
+                current_event_type = event_type_id
+                break
+        
+        # Get the requested event type
+        requested_event_type = (
+            self.request.data.get("event_type")
+            if "event_type" in self.request.data
+            else self.request.query_params.get("event_type", None)
+        )
+        
+        if requested_event_type is not None:
+            requested_event_type = int(requested_event_type)
+            
+            # Check if user is trying to change the event type
+            if current_event_type != requested_event_type:
+                return Response(
+                    {
+                        "error": "Cannot change event type after creation",
+                        "detail": f"This event is a {instance.__class__.__name__} and cannot be changed to event type {requested_event_type}",
+                        "current_event_type": current_event_type,
+                        "requested_event_type": requested_event_type
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # If event types match, proceed with normal update
+        return super().update(request, *args, **kwargs)

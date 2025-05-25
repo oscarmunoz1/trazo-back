@@ -99,21 +99,27 @@ class UpdateWeatherEventSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         data = super().to_representation(instance)
         type = data.get("type", None)
+        
+        # Ensure extra_data is not None before accessing it
+        if instance.extra_data is None:
+            instance.extra_data = {}
+        
         if type == WeatherEvent.FROST:
-            data["lower_temperature"] = instance.extra_data["lower_temperature"]
-            data["way_of_protection"] = instance.extra_data["way_of_protection"]
+            data["lower_temperature"] = instance.extra_data.get("lower_temperature", 0)
+            data["way_of_protection"] = instance.extra_data.get("way_of_protection", "")
         elif type == WeatherEvent.DROUGHT:
-            data["water_deficit"] = instance.extra_data["water_deficit"]
+            data["water_deficit"] = instance.extra_data.get("water_deficit", 0)
         elif type == WeatherEvent.HAILSTORM:
-            data["weight"] = instance.extra_data["weight"]
-            data["diameter"] = instance.extra_data["diameter"]
-            data["duration"] = instance.extra_data["duration"]
-            data["way_of_protection"] = instance.extra_data["way_of_protection"]
+            data["weight"] = instance.extra_data.get("weight", 0)
+            data["diameter"] = instance.extra_data.get("diameter", 0)
+            data["duration"] = instance.extra_data.get("duration", 0)
+            data["way_of_protection"] = instance.extra_data.get("way_of_protection", "")
         elif type == WeatherEvent.HIGH_TEMPERATURE:
-            data["highest_temperature"] = instance.extra_data["highest_temperature"]
-            data["start_date"] = instance.extra_data["start_date"]
-            data["end_date"] = instance.extra_data["end_date"]
-        data.pop("extra_data")
+            data["highest_temperature"] = instance.extra_data.get("highest_temperature", 0)
+            data["start_date"] = instance.extra_data.get("start_date", "")
+            data["end_date"] = instance.extra_data.get("end_date", "")
+        
+        data.pop("extra_data", None)  # Use pop with default to avoid KeyError if key doesn't exist
         return data
 
     def update(self, instance, validated_data):

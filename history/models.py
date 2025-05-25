@@ -222,7 +222,7 @@ class CommonEvent(models.Model):
 class WeatherEvent(CommonEvent):
     FROST = "FR"
     DROUGHT = "DR"
-    HAILSTORM = "HA"
+    HAILSTORM = "HL"
     HIGH_TEMPERATURE = "HT"
     TROPICAL_STORM = "TS"
     HIGH_WINDS = "HW"
@@ -315,12 +315,12 @@ class EquipmentEvent(CommonEvent):
     """Events related to equipment maintenance, repairs, and fuel consumption"""
     
     # Equipment event types
-    MAINTENANCE = "MA"
+    MAINTENANCE = "MN"
     REPAIR = "RE" 
     CALIBRATION = "CA"
     FUEL_CONSUMPTION = "FC"
-    BREAKDOWN = "BR"
-    INSPECTION = "IN"
+    BREAKDOWN = "BD"
+    INSPECTION = "EI"
     
     EQUIPMENT_TYPE_CHOICES = [
         (MAINTENANCE, "Maintenance"),

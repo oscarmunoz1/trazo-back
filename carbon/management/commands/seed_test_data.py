@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from company.models import Company, Establishment
 from product.models import Product, Parcel
-from history.models import History, WeatherEvent, ChemicalEvent, ProductionEvent, GeneralEvent
+from history.models import History, WeatherEvent, ChemicalEvent, ProductionEvent, GeneralEvent, EquipmentEvent, SoilManagementEvent, BusinessEvent
 from carbon.models import (
     CarbonSource, CarbonEntry, CarbonCertification, CarbonBenchmark,
     CarbonReport, SustainabilityBadge, CarbonOffsetProject, CarbonOffsetPurchase
@@ -17,104 +17,66 @@ import uuid
 User = get_user_model()
 
 class Command(BaseCommand):
-    help = 'Seeds test data for carbon features'
+    help = 'Create comprehensive test data for ROI analysis with real operational events'
 
-    def handle(self, *args, **kwargs):
-        # Create test user
-        user, _ = User.objects.get_or_create(
+    def handle(self, *args, **options):
+        # Get or create test user
+        user, created = User.objects.get_or_create(
             email='test@example.com',
             defaults={
                 'first_name': 'Test',
                 'last_name': 'User',
                 'is_active': True,
-                'user_type': PRODUCER
             }
         )
+        if created:
         user.set_password('testpass123')
         user.save()
 
-        # Create test plan
-        plan, _ = Plan.objects.get_or_create(
-            name='Enterprise',
-            slug='enterprise',
-            defaults={
-                'description': 'Enterprise plan with all features',
-                'price': 99.99,
-                'interval': 'monthly',
-                'features': {
-                    'max_establishments': 10,
-                    'max_productions': 100,
-                    'max_storage_gb': 100,
-                    'max_scans': 1000,
-                    'carbon_tracking': True,
-                    'carbon_certificates': True,
-                    'carbon_analytics': True,
-                    'carbon_benchmarks': True,
-                    'carbon_recommendations': True
-                }
-            }
-        )
-
-        # Create test company
+        # Create company
         company, _ = Company.objects.get_or_create(
-            name='Test Company',
+            name='Test Agricultural Company',
             defaults={
-                'description': 'Test company for carbon features'
+                'description': 'Test company for ROI analysis',
+                'address': '123 Farm Road',
+                'city': 'Agricultural Valley',
+                'state': 'California',
+                'country': 'USA',
+                'contact_phone': '+1-555-0123',
+                'contact_email': 'info@testfarm.com',
+                'website': 'https://testfarm.com'
             }
         )
 
-        # Create subscription for company
-        subscription, _ = Subscription.objects.get_or_create(
-            company=company,
-            defaults={
-                'plan': plan,
-                'status': 'active',
-                'current_period_start': timezone.now(),
-                'current_period_end': timezone.now() + datetime.timedelta(days=30)
-            }
-        )
-
-        # Create test establishment
+        # Create establishment
         establishment, _ = Establishment.objects.get_or_create(
-            name='Test Farm',
+            name='Main Citrus Farm',
             company=company,
             defaults={
-                'address': '123 Test St',
-                'city': 'Test City',
-                'state': 'Test State',
-                'country': 'Test Country',
-                'description': 'Test farm for carbon features'
+                'description': 'Primary citrus production facility',
+                'address': '123 Farm Road',
+                'city': 'Agricultural Valley',
+                'state': 'California',
+                'latitude': 34.0522,
+                'longitude': -118.2437
             }
         )
 
-        # Associate user with company and establishment
-        works_in, _ = WorksIn.objects.get_or_create(
-            user=user,
-            company=company,
-            defaults={
-                'role': 'CA'  # Company Admin
-            }
-        )
-        works_in.establishments_in_charge.add(establishment)
-
-        # Create test product
+        # Create product
         product, _ = Product.objects.get_or_create(
-            name='Oranges',
+            name='Valencia Orange',
             defaults={
-                'description': 'Organic oranges'
+                'description': 'Premium Valencia oranges'
             }
         )
 
-        # Create test parcel
+        # Create parcel
         parcel, _ = Parcel.objects.get_or_create(
-            name='Orange Field 1',
+            name='North Field',
             establishment=establishment,
             defaults={
-                'description': 'Main orange field',
-                'area': 10.0,
-                'product': product,
-                'crop_type': 'Citrus',
-                'soil_type': 'Loam'
+                'description': 'Main orange grove - 10 hectares',
+                'area': 10.0
             }
         )
 
@@ -135,468 +97,354 @@ class Command(BaseCommand):
             }
         )
 
-        # Add events to current production
-        events = [
-            # Weather Events
-            {
-                'model': WeatherEvent,
-                'type': 'HT',  # High Temperature
-                'description': 'Heat wave affecting irrigation needs',
-                'date': timezone.now() - datetime.timedelta(days=25),
-                'observation': 'Temperatures above 35°C for 3 consecutive days',
-                'certified': True
-            },
-            # Chemical Events
-            {
-                'model': ChemicalEvent,
-                'type': 'FE',  # Fertilizer
-                'description': 'Spring fertilization',
-                'date': timezone.now() - datetime.timedelta(days=20),
-                'commercial_name': 'Organic Citrus Fertilizer',
-                'volume': '50 kg',
-                'concentration': '10-10-10',
-                'area': 'Full field',
-                'way_of_application': 'Broadcast',
-                'time_period': 'Morning',
-                'observation': 'Applied before irrigation',
-                'certified': True
-            },
-            # Production Events
-            {
-                'model': ProductionEvent,
-                'type': 'IR',  # Irrigation
-                'description': 'Drip irrigation maintenance',
-                'date': timezone.now() - datetime.timedelta(days=15),
-                'observation': 'Adjusted drip lines for better coverage',
-                'certified': True
-            }
-        ]
-
-        for i, event_data in enumerate(events, 1):
-            event = event_data['model'].objects.create(
-                history=current_production,
-                created_by=user,
-                index=i,
-                **{k: v for k, v in event_data.items() if k != 'model'}
-            )
-
-        # Create finished and published production
+        # Create finished production for comparison
         finished_production, _ = History.objects.get_or_create(
-            name='Winter 2023 Orange Production',
+            name='Previous Orange Production',
             parcel=parcel,
             defaults={
                 'type': 'OR',
                 'start_date': timezone.now() - datetime.timedelta(days=180),
                 'finish_date': timezone.now() - datetime.timedelta(days=30),
                 'product': product,
-                'description': 'Winter 2023 orange production',
+                'description': 'Winter 2023-2024 orange production',
                 'is_outdoor': True,
-                'age_of_plants': '2.5 years',
+                'age_of_plants': '3 years',
                 'number_of_plants': '100',
-                'soil_ph': '6.5',
+                'soil_ph': '6.8',
+                'production_amount': 4800.0,
+                'earning': 8400.0,
                 'published': True,
-                'production_amount': 5000.0,
-                'lot_id': 'W23-001',
                 'operator': user
             }
         )
 
-        # Add events to finished production
-        events = [
-            # Weather Events
-            {
-                'model': WeatherEvent,
-                'type': 'FR',  # Frost
-                'description': 'Early morning frost',
-                'date': timezone.now() - datetime.timedelta(days=150),
-                'observation': 'Temperature dropped to -2°C',
-                'certified': True
-            },
-            # Chemical Events
-            {
-                'model': ChemicalEvent,
-                'type': 'PE',  # Pesticide
-                'description': 'Pest control application',
-                'date': timezone.now() - datetime.timedelta(days=120),
-                'commercial_name': 'Organic Pest Control',
-                'volume': '20 L',
-                'concentration': '5%',
-                'area': 'Full field',
-                'way_of_application': 'Spray',
-                'time_period': 'Evening',
-                'observation': 'Applied after sunset',
-                'certified': True
-            },
-            # Production Events
-            {
-                'model': ProductionEvent,
-                'type': 'HA',  # Harvesting
-                'description': 'Main harvest',
-                'date': timezone.now() - datetime.timedelta(days=30),
-                'observation': 'Harvested 5000 kg of oranges',
-                'certified': True
-            }
-        ]
+        # Clear existing events to avoid duplicates
+        EquipmentEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        ChemicalEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        ProductionEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        GeneralEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        WeatherEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        SoilManagementEvent.objects.filter(history__in=[current_production, finished_production]).delete()
+        BusinessEvent.objects.filter(history__in=[current_production, finished_production]).delete()
 
-        for i, event_data in enumerate(events, 1):
-            event = event_data['model'].objects.create(
-                history=finished_production,
-                created_by=user,
-                index=i,
-                **{k: v for k, v in event_data.items() if k != 'model'}
+        # Create operational events for current production (showing poor efficiency)
+        self.create_current_production_events(current_production, user)
+        
+        # Create operational events for finished production (showing better efficiency)
+        self.create_finished_production_events(finished_production, user)
+
+        # Create benchmarks and badges
+        self.create_benchmarks_and_badges()
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'Successfully created comprehensive test data for {user.email}:\n'
+                f'- Company: {company.name}\n'
+                f'- Establishment: {establishment.name}\n'
+                f'- Parcel: {parcel.name}\n'
+                f'- Current Production: {current_production.name}\n'
+                f'- Finished Production: {finished_production.name}\n'
+                f'This data provides comprehensive operational information for accurate ROI calculations.'
             )
-
-        # Create carbon sources
-        sources = [
-            {
-                'name': 'Citrus Fertilizer',
-                'description': 'Organic citrus fertilizer',
-                'unit': 'kg',
-                'category': 'fertilizer',
-                'default_emission_factor': 1.2,
-                'usda_verified': True,
-                'cost_per_unit': 2.5
-            },
-            {
-                'name': 'Diesel Fuel',
-                'description': 'Farm equipment fuel',
-                'unit': 'liter',
-                'category': 'fuel',
-                'default_emission_factor': 2.7,
-                'usda_verified': True,
-                'cost_per_unit': 1.8
-            }
-        ]
-
-        for source_data in sources:
-            CarbonSource.objects.get_or_create(
-                name=source_data['name'],
-                defaults=source_data
-            )
-
-        # Create carbon entries for current production
-        entries = [
-            {
-                'establishment': establishment,
-                'production': current_production,
-                'created_by': user,
-                'type': 'emission',
-                'source': CarbonSource.objects.get(name='Citrus Fertilizer'),
-                'amount': 100.0,
-                'year': 2024,
-                'description': 'Spring fertilization',
-                'cost': 250.0,
-                'usda_verified': True
-            },
-            {
-                'establishment': establishment,
-                'production': current_production,
-                'created_by': user,
-                'type': 'emission',
-                'source': CarbonSource.objects.get(name='Diesel Fuel'),
-                'amount': 50.0,
-                'year': 2024,
-                'description': 'Irrigation maintenance',
-                'cost': 90.0,
-                'usda_verified': True
-            }
-        ]
-
-        for entry_data in entries:
-            CarbonEntry.objects.get_or_create(
-                establishment=entry_data['establishment'],
-                production=entry_data['production'],
-                type=entry_data['type'],
-                source=entry_data['source'],
-                year=entry_data['year'],
-                defaults=entry_data
-            )
-
-        # Create carbon entries for finished production
-        entries = [
-            {
-                'establishment': establishment,
-                'production': finished_production,
-                'created_by': user,
-                'type': 'emission',
-                'source': CarbonSource.objects.get(name='Citrus Fertilizer'),
-                'amount': 120.0,
-                'year': 2023,
-                'description': 'Winter fertilization',
-                'cost': 300.0,
-                'usda_verified': True
-            },
-            {
-                'establishment': establishment,
-                'production': finished_production,
-                'created_by': user,
-                'type': 'emission',
-                'source': CarbonSource.objects.get(name='Diesel Fuel'),
-                'amount': 80.0,
-                'year': 2023,
-                'description': 'Harvesting equipment',
-                'cost': 144.0,
-                'usda_verified': True
-            }
-        ]
-
-        for entry_data in entries:
-            CarbonEntry.objects.get_or_create(
-                establishment=entry_data['establishment'],
-                production=entry_data['production'],
-                type=entry_data['type'],
-                source=entry_data['source'],
-                year=entry_data['year'],
-                defaults=entry_data
-            )
-
-        # Create carbon certification with unique ID
-        unique_id = f'USDA-ORG-{establishment.id}-{uuid.uuid4().hex[:8]}'
-        CarbonCertification.objects.get_or_create(
-            establishment=establishment,
-            production=None,  # Only associate with establishment
-            defaults={
-                'certifier': 'USDA Organic',
-                'certificate_id': unique_id,
-                'issue_date': timezone.now().date(),
-                'is_usda_soe_verified': True
-            }
         )
 
-        # Create benchmark for carbon footprint reference
-        benchmark, _ = CarbonBenchmark.objects.get_or_create(
+    def create_current_production_events(self, production, user):
+        """Create events showing poor efficiency for current production"""
+        
+        # Equipment Events - Poor efficiency examples
+        EquipmentEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FC',
+            description='Field preparation with tractor',
+            date=timezone.now() - datetime.timedelta(days=28),
+            equipment_name='John Deere 2440',
+            fuel_type='diesel',
+            fuel_amount=150.0,  # 15L/ha - poor efficiency
+            area_covered='10 hectares',
+            hours_used=8.0,
+            maintenance_cost=200.0,
+            certified=True,
+            index=1
+        )
+
+        EquipmentEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FC',
+            description='Citrus harvesting equipment',
+            date=timezone.now() - datetime.timedelta(days=5),
+            equipment_name='Citrus Harvester CH-200',
+            fuel_type='diesel',
+            fuel_amount=280.0,  # 28L/ha - poor efficiency
+            area_covered='10 hectares',
+            hours_used=12.0,
+            maintenance_cost=450.0,
+            certified=True,
+            index=2
+        )
+
+        # Chemical Events - Premium pricing examples
+        ChemicalEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FE',
+            description='Premium nitrogen fertilizer application',
+            date=timezone.now() - datetime.timedelta(days=22),
+            commercial_name='Premium Citrus NPK 15-10-15',
+            volume='200 kg',
+            concentration='15-10-15',
+            area='10 hectares',
+            way_of_application='Broadcast',
+            time_period='Morning',
+            observation='Premium product - $3.8/kg, potential bulk savings available',
+            certified=True,
+            index=3
+        )
+
+        ChemicalEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='PE',
+            description='Premium pesticide application',
+            date=timezone.now() - datetime.timedelta(days=18),
+            commercial_name='Premium Insect Control Pro',
+            volume='15 liters',
+            concentration='10%',
+            area='10 hectares',
+            way_of_application='Spray',
+            time_period='Evening',
+            observation='Premium product - $48/L, bulk options available',
+            certified=True,
+            index=4
+        )
+
+        # Production Events - High energy consumption
+        ProductionEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='IR',
+            description='High-consumption irrigation',
+            date=timezone.now() - datetime.timedelta(days=12),
+            observation='1000 m³ water, 24 hours operation, 1.2 kWh/m³ - inefficient pump',
+            certified=True,
+            index=5
+        )
+
+        # Soil Management Events - Conservation practices
+        SoilManagementEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='CO',  # Cover crops
+            description='Winter cover crop planting - crimson clover',
+            date=timezone.now() - datetime.timedelta(days=120),
+            amendment_type='Crimson clover seeds',
+            amendment_amount='25 kg/hectare',
+            carbon_sequestration_potential=1.5,
+            certified=True,
+            index=6
+        )
+
+        SoilManagementEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='TI',  # Tillage
+            description='No-till planting implementation',
+            date=timezone.now() - datetime.timedelta(days=180),
+            amendment_type='Conservation tillage',
+            carbon_sequestration_potential=2.0,
+            certified=True,
+            index=7
+        )
+
+        SoilManagementEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='OM',  # Organic matter
+            description='Compost application for soil health',
+            date=timezone.now() - datetime.timedelta(days=140),
+            amendment_type='Organic compost',
+            amendment_amount='5 tons/hectare',
+            organic_matter_percentage=3.2,
+            carbon_sequestration_potential=2.5,
+            certified=True,
+            index=8
+        )
+
+        # General Events - Conservation focus
+        GeneralEvent.objects.create(
+            history=production,
+            created_by=user,
+            name='Conservation tillage workshop attendance',
+            description='Conservation tillage workshop attendance',
+            date=timezone.now() - datetime.timedelta(days=250),
+            certified=True,
+            index=9
+        )
+
+        GeneralEvent.objects.create(
+            history=production,
+            created_by=user,
+            name='Sustainable agriculture certification process',
+            description='Sustainable agriculture certification process',
+            date=timezone.now() - datetime.timedelta(days=220),
+            certified=True,
+            index=10
+        )
+
+        GeneralEvent.objects.create(
+            history=production,
+            created_by=user,
+            name='Water conservation system upgrade',
+            description='Water conservation system upgrade',
+            date=timezone.now() - datetime.timedelta(days=150),
+            certified=True,
+            index=11
+        )
+
+        # Additional Production Events for REAP eligibility
+        ProductionEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='IR',
+            description='Drip irrigation system installation',
+            date=timezone.now() - datetime.timedelta(days=200),
+            observation='New drip irrigation system for water efficiency - $1,250 investment',
+            certified=True,
+            index=12
+        )
+
+        ProductionEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='IR',
+            description='Irrigation efficiency monitoring setup',
+            date=timezone.now() - datetime.timedelta(days=180),
+            observation='Smart monitoring system for irrigation optimization - $350 investment',
+            certified=True,
+            index=13
+        )
+
+        # Soil Management Events
+        SoilManagementEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='ST',  # Soil Test
+            description='Annual soil analysis',
+            date=timezone.now() - datetime.timedelta(days=30),
+            soil_ph=6.8,
+            organic_matter_percentage=3.2,
+            amendment_type='Lime',
+            amendment_amount='200 kg/ha',
+            test_results={
+                'nitrogen': 'Medium',
+                'phosphorus': 'High',
+                'potassium': 'Medium',
+                'organic_matter': '3.2%',
+                'ph': 6.8
+            },
+            carbon_sequestration_potential=2.5,
+            certified=True,
+            index=14
+        )
+
+    def create_finished_production_events(self, production, user):
+        """Create events showing better efficiency for finished production"""
+        
+        # Equipment Events - Better efficiency examples
+        EquipmentEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FC',
+            description='Efficient field preparation',
+            date=timezone.now() - datetime.timedelta(days=160),
+            equipment_name='John Deere 2440',
+            fuel_type='diesel',
+            fuel_amount=96.0,  # 12L/ha - good efficiency
+            area_covered='8 hectares',
+            hours_used=6.0,
+            maintenance_cost=120.0,
+            certified=True,
+            index=1
+        )
+
+        EquipmentEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FC',
+            description='Efficient harvesting operation',
+            date=timezone.now() - datetime.timedelta(days=35),
+            equipment_name='Citrus Harvester CH-200',
+            fuel_type='diesel',
+            fuel_amount=176.0,  # 22L/ha - good efficiency
+            area_covered='8 hectares',
+            hours_used=10.0,
+            maintenance_cost=300.0,
+            certified=True,
+            index=2
+        )
+
+        # Chemical Events - Bulk purchasing examples
+        ChemicalEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='FE',
+            description='Bulk fertilizer purchase',
+            date=timezone.now() - datetime.timedelta(days=150),
+            commercial_name='Bulk Citrus NPK 15-10-15',
+            volume='400 kg',
+            concentration='15-10-15',
+            area='8 hectares',
+            way_of_application='Broadcast',
+            time_period='Morning',
+            observation='Bulk purchase - 18% savings vs premium, $2.3/kg',
+            certified=True,
+            index=3
+        )
+
+        # Business Events
+        BusinessEvent.objects.create(
+            history=production,
+            created_by=user,
+            type='HS',
+            description='Premium citrus sale',
+            date=timezone.now() - datetime.timedelta(days=40),
+            revenue_amount=8400.00,
+            quantity_sold='4800 kg',
+            buyer_name='Premium Citrus Co.',
+            certification_type='Organic',
+            carbon_credits_earned=2.5,
+            certified=True,
+            index=4
+        )
+
+    def create_benchmarks_and_badges(self):
+        """Create industry benchmarks and sustainability badges"""
+
+        # Create carbon benchmark
+        CarbonBenchmark.objects.get_or_create(
             industry='Citrus',
-            year=timezone.now().year,
+            year=2024,
+            crop_type='Orange',
+            region='California',
             defaults={
-                'average_emissions': 0.5,  # kg CO2e per kg of oranges
-                'min_emissions': 0.3,
-                'max_emissions': 0.8,
-                'company_count': 50,
-                'unit': 'kg CO2e/kg',
-                'source': 'USDA SOE 2024',
-                'usda_verified': True,
-                'crop_type': 'Orange',
-                'region': 'California'
+                'average_emissions': 2500.0,
+                'min_emissions': 1800.0,
+                'max_emissions': 3500.0,
+                'company_count': 150,
+                'unit': 'kg CO2e per hectare',
+                'source': 'USDA Agricultural Research Service',
+                'usda_verified': True
             }
         )
 
-        # Create carbon report for current production
-        CarbonReport.objects.get_or_create(
-            establishment=establishment,
-            production=current_production,
-            period_start=datetime.date(2024, 1, 1),
-            period_end=datetime.date(2024, 12, 31),
-            defaults={
-                'total_emissions': 150.0,
-                'total_offsets': 50.0,
-                'net_footprint': 100.0,
-                'carbon_score': 75,
-                'usda_verified': True,
-                'cost_savings': 340.0,
-                'recommendations': [
-                    {'action': 'Switch to drip irrigation', 'savings': 200.0},
-                    {'action': 'Use organic fertilizer', 'savings': 140.0}
-                ]
-            }
-        )
-
-        # Create carbon report for finished production
-        CarbonReport.objects.get_or_create(
-            establishment=establishment,
-            production=finished_production,
-            period_start=datetime.date(2023, 7, 1),
-            period_end=datetime.date(2023, 12, 31),
-            defaults={
-                'total_emissions': 200.0,
-                'total_offsets': 80.0,
-                'net_footprint': 120.0,
-                'carbon_score': 65,
-                'usda_verified': True,
-                'cost_savings': 444.0,
-                'recommendations': [
-                    {'action': 'Optimize harvesting schedule', 'savings': 200.0},
-                    {'action': 'Use more efficient equipment', 'savings': 244.0}
-                ]
-            }
-        )
-
-        # Create sustainability badge
+        # Create sustainability badges
         SustainabilityBadge.objects.get_or_create(
             name='Gold Tier',
-            criteria={'net_footprint': 0},
-            description='Achieved carbon neutrality',
-            usda_verified=True
-        )
-
-        # Create carbon offset project
-        project, _ = CarbonOffsetProject.objects.get_or_create(
-            name='California Reforestation',
-            description='Tree planting in California',
-            project_type='Reforestation',
-            certification_standard='USDA',
-            location='California',
-            price_per_ton=50.00,
-            available_capacity=1000.00
-        )
-
-        # Create carbon offset purchase
-        CarbonOffsetPurchase.objects.get_or_create(
-            project=project,
-            user=user,
-            amount=10.00,
-            price_per_ton=50.00,
-            total_price=500.00,
-            status='completed',
-            is_verified=True
-        )
-
-        # Enhanced finished production with consumer-facing data
-        if finished_production:
-            # Add farmer story data
-            finished_production.farmer_name = "John Smith"
-            finished_production.farmer_bio = "Third-generation farmer committed to sustainable practices since 1980"
-            finished_production.farmer_photo = "https://images.unsplash.com/photo-1520052203542-d3095f1b6cf0?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMTc3M3wwfDF8c2VhcmNofDI0fHxmYXJtZXJ8ZW58MHx8fHwxNzA0ODQ1NzE1fDA&ixlib=rb-4.0.3&q=80&w=1080"
-            finished_production.farmer_location = "Central Valley, California"
-            finished_production.farmer_certifications = ["USDA Organic", "Fair Trade"]
-            finished_production.sustainability_initiatives = [
-                "Solar-powered irrigation",
-                "Compost-based fertilization",
-                "Cover cropping for soil health",
-                "Water conservation through drip irrigation",
-                "Renewable energy use"
-            ]
-            finished_production.carbon_reduction = 25000  # kg CO2e reduced annually
-            finished_production.years_of_practice = 15
-            finished_production.save()
-            
-            # Add carbon data with relatable footprint
-            total_emissions = 0.3  # kg CO2e per kg
-            total_offsets = 0.2    # kg CO2e per kg
-            net_footprint = total_emissions - total_offsets
-            relatable_footprint = "like driving 1 mile"  # For consumer understanding
-            
-            carbon_report, _ = CarbonReport.objects.get_or_create(
-                production=finished_production,
-                defaults={
-                    'period_start': finished_production.start_date,
-                    'period_end': finished_production.finish_date or timezone.now(),
-                    'total_emissions': total_emissions * finished_production.production_amount,
-                    'total_offsets': total_offsets * finished_production.production_amount,
-                    'net_footprint': net_footprint * finished_production.production_amount,
-                    'carbon_score': CarbonEntry.calculate_carbon_score(
-                        total_emissions * finished_production.production_amount,
-                        total_offsets * finished_production.production_amount,
-                        benchmark.average_emissions * finished_production.production_amount
-                    ),
-                    'usda_verified': True,
-                    'cost_savings': 1500.0,
-                    'recommendations': [
-                        {
-                            'title': 'Efficient Irrigation',
-                            'description': 'This producer uses water-saving irrigation techniques',
-                            'impact': 'Reduces water usage by up to 30% compared to conventional methods',
-                            'cost_savings': 'Saves approximately $500 per acre annually',
-                            'implementation': 'Drip irrigation and soil moisture monitoring',
-                            'category': 'water'
-                        },
-                        {
-                            'title': 'Organic Fertilizers',
-                            'description': 'This product is grown with natural fertilizers',
-                            'impact': 'Reduces chemical runoff and builds soil health',
-                            'cost_savings': 'Improves soil quality over time',
-                            'implementation': 'Compost and natural nutrient sources',
-                            'category': 'soil'
-                        },
-                        {
-                            'title': 'Solar Power',
-                            'description': 'This farm uses solar energy in its operations',
-                            'impact': 'Reduces fossil fuel emissions by up to 40%',
-                            'cost_savings': 'Saves approximately $2,000 annually in energy costs',
-                            'implementation': 'Solar panels power farm operations',
-                            'category': 'energy'
-                        },
-                        {
-                            'title': 'Reduced Pesticide Use',
-                            'description': 'Uses integrated pest management to minimize chemical use',
-                            'impact': 'Reduces harmful chemical runoff by up to 50%',
-                            'cost_savings': 'Saves on expensive pesticides',
-                            'implementation': 'Natural predators and targeted treatments',
-                            'category': 'biodiversity'
-                        }
-                    ]
-                }
-            )
-            
-            # Add emissions by category for consumer view
-            emissions_by_category = {
-                'fertilizer': 0.12,
-                'fuel': 0.08,
-                'irrigation': 0.05,
-                'transportation': 0.05
+            defaults={
+                'description': 'Exceptional carbon performance with net negative emissions',
+                'minimum_score': 80,
+                'is_automatic': True,
+                'usda_verified': True
             }
-            
-            for category, amount in emissions_by_category.items():
-                source, _ = CarbonSource.objects.get_or_create(
-                    name=f'{category.capitalize()} Emissions',
-                    defaults={
-                        'description': f'Emissions from {category}',
-                        'category': category,
-                        'default_emission_factor': 1.0,
-                        'unit': 'kg CO2e'
-                    }
-                )
-                
-                CarbonEntry.objects.get_or_create(
-                    production=finished_production,
-                    type='emission',
-                    source=source,
-                    amount=amount * finished_production.production_amount,
-                    co2e_amount=amount * finished_production.production_amount,
-                    year=timezone.now().year,
-                    description=f'{category.capitalize()} emissions for {finished_production.name}',
-                    usda_verified=True
-                )
-            
-            # Add offset entries for consumer view
-            offset_by_action = {
-                'tree planting': 0.12,
-                'renewable energy credits': 0.08
-            }
-            
-            for action, amount in offset_by_action.items():
-                source, _ = CarbonSource.objects.get_or_create(
-                    name=f'{action.capitalize()}',
-                    defaults={
-                        'description': f'Carbon offsets from {action}',
-                        'category': 'offset',
-                        'default_emission_factor': -1.0,
-                        'unit': 'kg CO2e'
-                    }
-                )
-                
-                CarbonEntry.objects.get_or_create(
-                    production=finished_production,
-                    type='offset',
-                    source=source,
-                    amount=amount * finished_production.production_amount,
-                    co2e_amount=amount * finished_production.production_amount,
-                    year=timezone.now().year,
-                    description=f'{action.capitalize()} for {finished_production.name}',
-                    usda_verified=True
-                )
-            
-            # Add sustainability badges to the production
-            badges = SustainabilityBadge.objects.all()
-            if not badges.exists():
-                from django.core.management import call_command
-                call_command('seed_sustainability_badges')
-                badges = SustainabilityBadge.objects.all()
-            
-            for badge in badges[:4]:  # Assign first 4 badges
-                finished_production.badges.add(badge)
-                
-            self.stdout.write(self.style.SUCCESS(
-                f'Added enhanced consumer data to production {finished_production.name}'
-            ))
-
-        self.stdout.write(self.style.SUCCESS('Successfully seeded test data')) 
+        ) 
