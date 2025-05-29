@@ -52,13 +52,6 @@ from .services.certificate import certificate_generator
 from .services.report_generator import report_generator
 from rest_framework import serializers
 import logging
-import random
-import math
-import datetime
-import json
-
-from .services.john_deere_api import JohnDeereAPI, is_john_deere_configured, get_john_deere_api
-from .services.weather_api import WeatherService, get_weather_service, get_current_weather, get_agricultural_recommendations, check_weather_alerts
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -302,15 +295,13 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
                 if industry:
                     try:
                         benchmark = CarbonBenchmark.objects.filter(
-                                        industry=industry,
+                            industry=industry,
                             year=year
                         ).first()
                         if benchmark:
                             industry_benchmark = benchmark.average_emissions
                     except Exception:
                         pass
-            except Exception:
-                pass
             except Establishment.DoesNotExist:
                 pass
                 
@@ -619,19 +610,19 @@ class CostOptimizationViewSet(viewsets.ViewSet):
                     })
 
             return Response({
-                    'analysis_date': timezone.now().isoformat(),
-                    'establishments_analyzed': len(establishment_ids),
-                    'total_annual_cost': total_cost,
-                    'total_potential_savings': total_potential_savings,
-                    'savings_percentage': (total_potential_savings / max(total_cost, 1)) * 100,
-                    'bulk_opportunities': bulk_opportunities,
-                    'coordination_tips': [
-                        'Contact neighboring farms to increase order volumes',
-                        'Plan seasonal chemical needs 3-6 months in advance',
-                        'Ensure proper storage facilities for bulk orders',
-                        'Consider shared storage and delivery arrangements'
-                    ]
-                }, status=status.HTTP_200_OK)
+                'analysis_date': timezone.now().isoformat(),
+                'establishments_analyzed': len(establishment_ids),
+                'total_annual_cost': total_cost,
+                'total_potential_savings': total_potential_savings,
+                'savings_percentage': (total_potential_savings / max(total_cost, 1)) * 100,
+                'bulk_opportunities': bulk_opportunities,
+                'coordination_tips': [
+                    'Contact neighboring farms to increase order volumes',
+                    'Plan seasonal chemical needs 3-6 months in advance',
+                    'Ensure proper storage facilities for bulk orders',
+                    'Consider shared storage and delivery arrangements'
+                ]
+            }, status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f"Error analyzing bulk purchasing: {str(e)}")
@@ -756,24 +747,24 @@ class CostOptimizationViewSet(viewsets.ViewSet):
                     # Add establishment-specific filtering logic here
                 except Establishment.DoesNotExist:
                     pass
-                
-                    return Response({
-                        'location': location,
-                        'last_updated': timezone.now().isoformat(),
-                        'available_incentives': incentives,
-                        'application_tips': [
-                            'Contact local NRCS office for personalized guidance',
-                            'Prepare detailed conservation plans before applying',
-                            'Apply early as funding is limited and competitive',
-                            'Consider combining multiple programs for maximum benefit',
-                            'Keep detailed records of current practices for baseline'
-                        ],
-                        'total_potential_value': sum(
-                            incentive.get('max_payment', 0) for incentive in incentives 
-                            if incentive.get('type') in ['cost_share', 'grant_loan']
-                        )
-                    }, status=status.HTTP_200_OK)
-                
+            
+            return Response({
+                'location': location,
+                'last_updated': timezone.now().isoformat(),
+                'available_incentives': incentives,
+                'application_tips': [
+                    'Contact local NRCS office for personalized guidance',
+                    'Prepare detailed conservation plans before applying',
+                    'Apply early as funding is limited and competitive',
+                    'Consider combining multiple programs for maximum benefit',
+                    'Keep detailed records of current practices for baseline'
+                ],
+                'total_potential_value': sum(
+                    incentive.get('max_payment', 0) for incentive in incentives 
+                    if incentive.get('type') in ['cost_share', 'grant_loan']
+                )
+            }, status=status.HTTP_200_OK)
+            
         except Exception as e:
             logger.error(f"Error fetching government incentives: {str(e)}")
             return Response(
@@ -960,7 +951,7 @@ def john_deere_webhook(request):
         for field in required_fields:
             if field not in data:
                 return Response(
-                        {'error': f'Missing required field: {field}'},
+                    {'error': f'Missing required field: {field}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
@@ -982,27 +973,14 @@ def john_deere_webhook(request):
         # Calculate carbon emissions (diesel: 2.7 kg CO2e/liter)
         co2e_emissions = fuel_liters * 2.7
         
-        # Find or create a CarbonSource for IoT-generated fuel consumption events
-        source_name = f'{equipment_type.title()} Fuel Consumption'
-        carbon_source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'fuel',
-                'default_emission_factor': 2.7,  # Diesel emission factor
-                'unit': 'kg CO2e/L',
-                'description': f'Automatically created for IoT device: {device_id}'
-            }
-        )
-        
         # Create carbon entry automatically
         carbon_entry = CarbonEntry.objects.create(
             establishment_id=establishment_id,
             type='emission',
-            source=carbon_source,  # Use CarbonSource instance instead of string
+            source=f'{equipment_type.title()} Fuel Consumption',
             amount=co2e_emissions,
             year=timezone.now().year,
             description=f'Auto-logged from IoT device {device_id}: {fuel_liters}L fuel consumed',
-            iot_device_id=device_id,
             created_by=request.user
         )
         
@@ -1024,8 +1002,8 @@ def john_deere_webhook(request):
     except ValueError as e:
         return Response(
             {'error': f'Invalid data format: {str(e)}'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            status=status.HTTP_400_BAD_REQUEST
+        )
     except Exception as e:
         logger.error(f"Error processing John Deere webhook: {str(e)}")
         return Response(
@@ -1049,7 +1027,7 @@ def weather_station_webhook(request):
         for field in required_fields:
             if field not in data:
                 return Response(
-                        {'error': f'Missing required field: {field}'}, 
+                    {'error': f'Missing required field: {field}'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
         
@@ -1213,10 +1191,10 @@ class IoTDeviceViewSet(viewsets.ViewSet):
             # Check if device_id already exists
             if IoTDevice.objects.filter(device_id=data['device_id']).exists():
                 return Response(
-                        {'error': 'Device ID already exists'},
+                    {'error': 'Device ID already exists'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-        
+            
             # Verify establishment exists
             try:
                 establishment = Establishment.objects.get(id=data['establishment_id'])
@@ -1496,7 +1474,7 @@ class IoTDeviceViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def simulate_data(self, request):
-        """Simulate IoT data for testing purposes - creates data points that go through the approval workflow."""
+        """Simulate IoT data for testing purposes."""
         establishment_id = request.data.get('establishment_id')
         device_type = request.data.get('device_type', 'fuel_sensor')
         
@@ -1506,152 +1484,51 @@ class IoTDeviceViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        try:
-            # Verify establishment exists
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-            except Establishment.DoesNotExist:
-                return Response(
-                    {'error': 'Establishment not found'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        if device_type == 'fuel_sensor':
+            # Simulate John Deere fuel sensor data
+            simulated_data = {
+                'device_id': 'JD_TRACTOR_SIM_001',
+                'establishment_id': establishment_id,
+                'fuel_liters': round(12.5 + (timezone.now().hour * 0.8), 2),  # Realistic fuel consumption
+                'timestamp': timezone.now().isoformat(),
+                'equipment_type': 'tractor',
+                'engine_hours': round(timezone.now().hour * 1.2, 1),
+                'location': {'lat': 40.7128, 'lng': -74.0060}
+            }
             
-            if device_type == 'fuel_sensor':
-                # Get or create the fuel sensor device
-                device, created = IoTDevice.objects.get_or_create(
-                    device_id='JD_TRACTOR_SIM_001',
-                    establishment=establishment,
-                    defaults={
-                        'device_type': 'fuel_sensor',
-                        'name': 'John Deere 6120M Tractor (Simulator)',
-                        'manufacturer': 'John Deere',
-                        'model': '6120M',
-                        'status': 'online',
-                        'battery_level': 85,
-                        'signal_strength': 'strong',
-                        'latitude': 34.0522,
-                        'longitude': -118.2437,
-                        'last_maintenance': timezone.now() - datetime.timedelta(days=30)
-                    }
-                )
-                
-                # Create realistic fuel consumption data
-                fuel_liters = round(12.5 + (timezone.now().hour * 0.8), 2)
-                engine_hours = round(timezone.now().hour * 1.2, 1)
-                
-                simulated_data = {
-                    'fuel_liters': fuel_liters,
-                    'engine_hours': engine_hours,
-                    'fuel_efficiency': round(fuel_liters / max(engine_hours, 0.1), 2),
-                    'equipment_type': 'tractor',
-                    'operation_type': 'field_operations',
-                    'area_covered': round(random.uniform(0.5, 2.0), 1),  # hectares
-                    'gps_location': {
-                        'lat': 34.0522 + random.uniform(-0.001, 0.001),
-                        'lng': -118.2437 + random.uniform(-0.001, 0.001)
-                    },
-                    'timestamp': timezone.now().isoformat(),
-                    'device_id': device.device_id
-                }
-                
-                # Create IoT data point (not carbon entry directly)
-                data_point = IoTDataPoint.objects.create(
-                    device=device,
-                    timestamp=timezone.now(),
-                    data=simulated_data,
-                    processed=False,  # Will be processed through approval workflow
-                    quality_score=0.95,  # High quality simulated data
-                    anomaly_detected=False
-                )
-                
-                # Update device stats
-                device.increment_data_points()
-                
-                return Response({
-                    'status': 'success',
-                    'message': f'Simulated fuel sensor data created: {fuel_liters}L fuel consumption',
-                    'data_point_id': data_point.id,
-                    'simulated_data': simulated_data,
-                    'workflow': 'Data point created - check Pending Events for approval',
-                    'note': 'This data will appear in Pending Events and can be approved to create carbon entries'
-                }, status=status.HTTP_201_CREATED)
-                
-            elif device_type == 'weather_station':
-                # Get or create the weather station device
-                device, created = IoTDevice.objects.get_or_create(
-                    device_id='WS_SIM_001',
-                    establishment=establishment,
-                    defaults={
-                        'device_type': 'weather_station',
-                        'name': 'Davis Vantage Pro2 (Simulator)',
-                        'manufacturer': 'Davis Instruments',
-                        'model': 'Vantage Pro2',
-                        'status': 'online',
-                        'battery_level': 92,
-                        'signal_strength': 'excellent',
-                        'latitude': 34.0525,
-                        'longitude': -118.2435,
-                        'last_maintenance': timezone.now() - datetime.timedelta(days=15)
-                    }
-                )
-                
-                # Create realistic weather data
-                # Realistic weather patterns for California citrus region
-                base_temp = 22  # Base temperature in Celsius
-                hour = timezone.now().hour
-                temp_variation = 8 * math.sin((hour - 6) * math.pi / 12)  # Daily temperature cycle
-                temperature = round(base_temp + temp_variation + random.uniform(-2, 2), 1)
-                
-                # Humidity inversely related to temperature
-                humidity = round(70 - (temperature - 20) * 2 + random.uniform(-10, 10), 1)
-                humidity = max(20, min(95, humidity))  # Keep within realistic bounds
-                
-                simulated_data = {
-                    'temperature': temperature,
-                    'humidity': humidity,
-                    'wind_speed': round(random.uniform(5, 25) if 8 <= hour <= 18 else random.uniform(2, 12), 1),
-                    'pressure': round(1013 + random.uniform(-15, 15), 1),
-                    'solar_radiation': round(random.uniform(0, 1200) if 6 <= hour <= 19 else 0, 1),
-                    'rainfall': round(random.uniform(0, 2) if random.random() < 0.1 else 0, 1),  # 10% chance of rain
-                    'uv_index': round(random.uniform(0, 11) if 8 <= hour <= 17 else 0, 1),
-                    'timestamp': timezone.now().isoformat(),
-                    'station_id': device.device_id
-                }
-                
-                # Create IoT data point
-                data_point = IoTDataPoint.objects.create(
-                    device=device,
-                    timestamp=timezone.now(),
-                    data=simulated_data,
-                    processed=False,
-                    quality_score=0.98,  # Very high quality weather data
-                    anomaly_detected=False
-                )
-                
-                # Update device stats
-                device.increment_data_points()
-                
-                return Response({
-                    'status': 'success',
-                    'message': f'Simulated weather station data created: {temperature}°C, {humidity}% humidity',
-                    'data_point_id': data_point.id,
-                    'simulated_data': simulated_data,
-                    'workflow': 'Weather data created - may trigger automation rules',
-                    'note': 'Weather data typically triggers recommendations rather than direct carbon entries'
-                }, status=status.HTTP_201_CREATED)
+            # Process through John Deere webhook
+            webhook_response = john_deere_webhook(request._request)
+            webhook_response.data['simulated_data'] = simulated_data
             
-            else:
-                return Response({
-                    'error': f'Unsupported device type: {device_type}',
-                    'supported_types': ['fuel_sensor', 'weather_station']
-                }, status=status.HTTP_400_BAD_REQUEST)
-                
-        except Exception as e:
-            logger.error(f"Error simulating IoT data: {str(e)}")
-            return Response({
-                'error': 'Failed to simulate IoT data',
-                'details': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return webhook_response
+            
+        elif device_type == 'weather_station':
+            # Simulate weather station data
+            import random
+            simulated_data = {
+                'station_id': 'WS_SIM_001',
+                'establishment_id': establishment_id,
+                'temperature': round(20 + random.uniform(-5, 15), 1),
+                'humidity': round(50 + random.uniform(-20, 30), 1),
+                'wind_speed': round(random.uniform(0, 35), 1),
+                'timestamp': timezone.now().isoformat(),
+                'pressure': round(1013 + random.uniform(-20, 20), 1)
+            }
+            
+            # Process through weather webhook
+            original_data = request.data
+            request.data.update(simulated_data)
+            webhook_response = weather_station_webhook(request)
+            request.data = original_data  # Restore original data
+            
+            webhook_response.data['simulated_data'] = simulated_data
+            return webhook_response
+        
+        else:
+            return Response(
+                {'error': f'Unsupported device type: {device_type}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class AutomationRuleViewSet(viewsets.ViewSet):
@@ -1716,7 +1593,7 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                         {'error': f'Missing required field: {field}'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-
+            
             # Verify establishment exists
             try:
                 establishment = Establishment.objects.get(id=data['establishment_id'])
@@ -1764,7 +1641,6 @@ class AutomationRuleViewSet(viewsets.ViewSet):
     def pending_events(self, request):
         """Get pending events that need user approval before creation."""
         establishment_id = request.query_params.get('establishment_id')
-        auto_process = request.query_params.get('auto_process', 'true').lower() == 'true'
         
         if not establishment_id:
             return Response(
@@ -1781,8 +1657,6 @@ class AutomationRuleViewSet(viewsets.ViewSet):
             ).order_by('-timestamp')[:20]
             
             pending_events = []
-            auto_processed_count = 0
-            
             for data_point in unprocessed_data:
                 device = data_point.device
                 
@@ -1791,10 +1665,7 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                     fuel_liters = data_point.data['fuel_liters']
                     co2e_emissions = fuel_liters * 2.7  # Diesel emission factor
                     
-                    # Calculate confidence score based on data quality and patterns
-                    confidence = self._calculate_fuel_confidence(data_point, fuel_liters)
-                    
-                    event_data = {
+                    pending_events.append({
                         'id': f'fuel_{data_point.id}',
                         'data_point_id': data_point.id,
                         'device_id': device.device_id,
@@ -1808,31 +1679,15 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                             'raw_data': data_point.data
                         },
                         'timestamp': data_point.timestamp.isoformat(),
-                        'confidence': confidence,
-                        'auto_approve_recommended': confidence > 0.9
-                    }
-                    
-                    # Smart Auto-Approval Logic
-                    if auto_process and confidence > 0.9:
-                        # High confidence - auto-approve
-                        try:
-                            self._auto_approve_event(data_point, event_data['suggested_carbon_entry'], request.user)
-                            auto_processed_count += 1
-                            continue  # Don't add to pending list
-                        except Exception as e:
-                            logger.error(f"Error auto-approving event: {str(e)}")
-                            # Fall through to manual approval
-                    
-                    # Add to pending events for manual approval
-                    pending_events.append(event_data)
+                        'confidence': 0.95,
+                        'auto_approve_recommended': fuel_liters < 50  # Auto-approve small amounts
+                    })
                 
-                elif device.device_type == 'soil_moisture' and 'soil_moisture_percent' in data_point.data:
-                    moisture = data_point.data['soil_moisture_percent']
+                elif device.device_type == 'soil_moisture' and 'moisture_level' in data_point.data:
+                    moisture = data_point.data['moisture_level']
                     
                     if moisture < 30:  # Low moisture threshold
-                        confidence = self._calculate_moisture_confidence(data_point, moisture)
-                        
-                        event_data = {
+                        pending_events.append({
                             'id': f'irrigation_{data_point.id}',
                             'data_point_id': data_point.id,
                             'device_id': device.device_id,
@@ -1845,44 +1700,14 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                                 'estimated_water_needed': '50-100L per hectare'
                             },
                             'timestamp': data_point.timestamp.isoformat(),
-                            'confidence': confidence,
+                            'confidence': 0.85,
                             'auto_approve_recommended': False  # Always require approval for irrigation
-                        }
-                        
-                        pending_events.append(event_data)
-                
-                elif device.device_type == 'weather_station':
-                    # Weather data typically generates recommendations, not carbon entries
-                    weather_data = data_point.data
-                    recommendations = self._generate_weather_recommendations(weather_data)
-                    
-                    if recommendations:
-                        confidence = 0.85  # Weather recommendations have high confidence
-                        
-                        event_data = {
-                            'id': f'weather_{data_point.id}',
-                            'data_point_id': data_point.id,
-                            'device_id': device.device_id,
-                            'device_name': device.name,
-                            'event_type': 'weather_alert',
-                            'suggested_action': recommendations[0],  # Take first recommendation
-                            'timestamp': data_point.timestamp.isoformat(),
-                            'confidence': confidence,
-                            'auto_approve_recommended': False  # Weather alerts need human review
-                        }
-                        
-                        pending_events.append(event_data)
+                        })
             
             return Response({
                 'establishment_id': establishment_id,
                 'pending_events': pending_events,
                 'total_count': len(pending_events),
-                'auto_processed_count': auto_processed_count,
-                'workflow_info': {
-                    'auto_approval_threshold': 0.9,
-                    'manual_approval_threshold': 0.7,
-                    'review_threshold': 0.5
-                },
                 'last_updated': timezone.now().isoformat()
             }, status=status.HTTP_200_OK)
             
@@ -1892,145 +1717,6 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                 {'error': 'Failed to fetch pending events', 'details': str(e)}, 
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-    def _calculate_fuel_confidence(self, data_point, fuel_liters):
-        """Calculate confidence score for fuel consumption events."""
-        confidence = 0.5  # Base confidence
-        
-        # Data quality factors
-        if data_point.quality_score > 0.9:
-            confidence += 0.2
-        elif data_point.quality_score > 0.7:
-            confidence += 0.1
-        
-        # Realistic fuel consumption (5-50L per session)
-        if 5 <= fuel_liters <= 50:
-            confidence += 0.2
-        elif fuel_liters > 50:
-            confidence -= 0.1  # High consumption needs review
-        
-        # Device status
-        if data_point.device.status == 'online':
-            confidence += 0.1
-        
-        # Time consistency (working hours)
-        hour = data_point.timestamp.hour
-        if 6 <= hour <= 18:  # Normal working hours
-            confidence += 0.1
-        
-        return min(1.0, confidence)
-    
-    def _calculate_moisture_confidence(self, data_point, moisture):
-        """Calculate confidence score for soil moisture events."""
-        confidence = 0.6  # Base confidence for soil data
-        
-        # Data quality
-        if data_point.quality_score > 0.9:
-            confidence += 0.15
-        
-        # Realistic moisture levels
-        if 10 <= moisture <= 60:
-            confidence += 0.1
-        
-        # Critical levels get higher confidence
-        if moisture < 20:
-            confidence += 0.1
-        
-        return min(1.0, confidence)
-    
-    def _generate_weather_recommendations(self, weather_data):
-        """Generate weather-based recommendations."""
-        recommendations = []
-        
-        temperature = weather_data.get('temperature', 0)
-        wind_speed = weather_data.get('wind_speed', 0)
-        humidity = weather_data.get('humidity', 50)
-        
-        # High temperature alert
-        if temperature > 35:
-            recommendations.append({
-                'type': 'weather_alert',
-                'priority': 'high',
-                'description': f'High temperature alert: {temperature}°C - Consider crop protection measures',
-                'suggested_actions': [
-                    'Increase irrigation frequency',
-                    'Apply shade cloth if available',
-                    'Monitor plant stress indicators'
-                ]
-            })
-        
-        # High wind alert
-        if wind_speed > 25:
-            recommendations.append({
-                'type': 'weather_alert',
-                'priority': 'medium',
-                'description': f'High wind alert: {wind_speed} km/h - Avoid chemical applications',
-                'suggested_actions': [
-                    'Postpone spraying operations',
-                    'Secure loose equipment',
-                    'Check irrigation systems for damage'
-                ]
-            })
-        
-        # Low humidity alert
-        if humidity < 30:
-            recommendations.append({
-                'type': 'weather_alert',
-                'priority': 'medium',
-                'description': f'Low humidity alert: {humidity}% - Increase irrigation',
-                'suggested_actions': [
-                    'Increase irrigation duration',
-                    'Monitor soil moisture levels',
-                    'Consider misting systems'
-                ]
-            })
-        
-        return recommendations
-    
-    def _auto_approve_event(self, data_point, event_data, user):
-        """Automatically approve and create carbon entry for high-confidence events."""
-        # Find or create a CarbonSource
-        source_name = event_data.get('source', 'IoT Device Data')
-        carbon_source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'equipment',
-                'default_emission_factor': 2.7,
-                'unit': 'kg CO2e/L',
-                'description': f'Auto-created for IoT device: {data_point.device.device_id}'
-            }
-        )
-        
-        # Create the carbon entry
-        carbon_entry = CarbonEntry.objects.create(
-            establishment=data_point.device.establishment,
-            type=event_data['type'],
-            source=carbon_source,
-            amount=event_data['amount'],
-            year=timezone.now().year,
-            description=event_data['description'],
-            iot_device_id=data_point.device.device_id,
-            created_by=user
-        )
-        
-        # Mark data point as processed
-        data_point.processed = True
-        data_point.processed_at = timezone.now()
-        data_point.carbon_entry = carbon_entry
-        data_point.save()
-        
-        # Update device stats
-        data_point.device.increment_data_points()
-        
-        # Log the auto-approval
-        CarbonAuditLog.objects.create(
-            carbon_entry=carbon_entry,
-            user=user,
-            action='iot_auto_approve',
-            details=f'Auto-approved IoT event from {data_point.device.device_id}: {event_data["amount"]:.2f} kg CO2e (confidence: high)'
-        )
-        
-        return carbon_entry
 
     @action(detail=False, methods=['post'])
     def approve_event(self, request):
@@ -2055,22 +1741,52 @@ class AutomationRuleViewSet(viewsets.ViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Use the same auto-approval logic for manual approvals
-            carbon_entry = self._auto_approve_event(data_point, event_data, request.user)
-            
-            # Update audit log to reflect manual approval
-            CarbonAuditLog.objects.filter(
-                carbon_entry=carbon_entry,
-                action='iot_auto_approve'
-            ).update(
-                action='iot_manual_approve',
-                details=f'Manually approved IoT event from {data_point.device.device_id}: {event_data["amount"]:.2f} kg CO2e'
+            # Find or create a CarbonSource for IoT-generated events
+            source_name = event_data.get('source', 'IoT Device Data')
+            carbon_source, created = CarbonSource.objects.get_or_create(
+                name=source_name,
+                defaults={
+                    'category': 'equipment',
+                    'emission_factor': 2.7,  # Default diesel emission factor
+                    'unit': 'kg CO2e/L',
+                    'description': f'Automatically created for IoT device: {data_point.device.device_id}'
+                }
             )
-        
+            
+            # Create the carbon entry
+            carbon_entry = CarbonEntry.objects.create(
+                establishment=data_point.device.establishment,
+                type=event_data['type'],
+                source=carbon_source,  # Use CarbonSource instance instead of string
+                amount=event_data['amount'],
+                year=timezone.now().year,
+                description=event_data['description'],
+                iot_device_id=data_point.device.device_id,
+                created_by=request.user
+            )
+            
+            # Mark data point as processed
+            data_point.processed = True
+            data_point.processed_at = timezone.now()
+            data_point.carbon_entry = carbon_entry
+            data_point.save()
+            
+            # Update device data point counter
+            data_point.device.increment_data_points()
+            
+            # Log the approval
+            CarbonAuditLog.objects.create(
+                carbon_entry=carbon_entry,
+                user=request.user,
+                action='iot_approve',
+                details=f'Approved IoT event from {data_point.device.device_id}: {event_data["amount"]:.2f} kg CO2e'
+            )
+            
             return Response({
                 'carbon_entry_id': carbon_entry.id,
                 'message': 'Event approved and carbon entry created successfully',
-                'co2e_amount': carbon_entry.amount
+                'co2e_amount': carbon_entry.amount,
+                'source_created': created
             }, status=status.HTTP_201_CREATED)
             
         except Exception as e:
@@ -2128,555 +1844,3 @@ class AutomationRuleViewSet(viewsets.ViewSet):
 
 
 # Placeholder ViewSets for missing ones referenced in URLs
-
-
-# John Deere API Integration Views
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def john_deere_auth_start(request):
-    """
-    Start John Deere OAuth authentication flow.
-    
-    Returns authorization URL for user to complete OAuth consent.
-    """
-    try:
-        from carbon.services.john_deere_api import get_john_deere_api, is_john_deere_configured
-        
-        if not is_john_deere_configured():
-            return Response({
-                'error': 'John Deere API not configured',
-                'message': 'Please configure JOHN_DEERE_CLIENT_ID and JOHN_DEERE_CLIENT_SECRET'
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        
-        # Generate state parameter for CSRF protection
-        state = f"{request.user.id}_{timezone.now().timestamp()}"
-        
-        api = get_john_deere_api()
-        auth_url = api.get_authorization_url(state=state)
-        
-        # Store state in session for validation
-        request.session['john_deere_oauth_state'] = state
-        
-        return Response({
-            'authorization_url': auth_url,
-            'state': state,
-            'message': 'Redirect user to authorization_url to complete OAuth flow'
-        })
-        
-    except Exception as e:
-        logger.error(f"Failed to start John Deere OAuth: {e}")
-        return Response({
-            'error': 'OAuth initialization failed',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def john_deere_auth_callback(request):
-    """
-    Handle John Deere OAuth callback and exchange code for token.
-    
-    Expected query parameters:
-    - code: Authorization code from John Deere
-    - state: State parameter for CSRF protection
-    """
-    try:
-        from carbon.services.john_deere_api import get_john_deere_api
-        
-        # Get parameters from callback
-        authorization_code = request.GET.get('code')
-        state = request.GET.get('state')
-        error = request.GET.get('error')
-        
-        if error:
-            return Response({
-                'error': 'OAuth authorization failed',
-                'message': f'John Deere returned error: {error}'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        if not authorization_code:
-            return Response({
-                'error': 'Missing authorization code',
-                'message': 'No authorization code received from John Deere'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Validate state parameter
-        expected_state = request.session.get('john_deere_oauth_state')
-        if not state or state != expected_state:
-            return Response({
-                'error': 'Invalid state parameter',
-                'message': 'CSRF protection failed - invalid state'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Exchange code for token
-        api = get_john_deere_api()
-        token_data = api.exchange_code_for_token(authorization_code)
-        
-        # Clean up session
-        if 'john_deere_oauth_state' in request.session:
-            del request.session['john_deere_oauth_state']
-        
-        return Response({
-            'success': True,
-            'message': 'John Deere authentication successful',
-            'token_expires_in': token_data.get('expires_in'),
-            'next_step': 'Call /carbon/john-deere/sync-devices/ to sync your equipment'
-        })
-        
-    except Exception as e:
-        logger.error(f"Failed to complete John Deere OAuth: {e}")
-        return Response({
-            'error': 'OAuth completion failed',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def john_deere_sync_devices(request):
-    """
-    Sync John Deere machines with IoT devices.
-    
-    This endpoint fetches machines from John Deere API and creates/updates
-    corresponding IoT device records.
-    """
-    try:
-        from carbon.services.john_deere_api import get_john_deere_api
-        from carbon.models import IoTDevice
-        
-        establishment_id = request.data.get('establishment_id')
-        if not establishment_id:
-            return Response({
-                'error': 'establishment_id is required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            establishment = Establishment.objects.get(id=establishment_id)
-        except Establishment.DoesNotExist:
-            return Response({
-                'error': 'Establishment not found'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        api = get_john_deere_api()
-        
-        # Get organizations (farms) from John Deere
-        organizations = api.get_organizations()
-        if not organizations:
-            return Response({
-                'error': 'No John Deere organizations found',
-                'message': 'Make sure your John Deere account has access to farm data'
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        synced_devices = []
-        errors = []
-        
-        # Sync machines from all organizations
-        for org in organizations:
-            org_id = org.get('id')
-            machines = api.get_machines(org_id)
-            
-            for machine in machines:
-                try:
-                    machine_id = machine.get('id')
-                    machine_name = machine.get('name', f"Machine {machine_id}")
-                    machine_model = machine.get('model', '')
-                    
-                    # Create or update IoT device
-                    device, created = IoTDevice.objects.get_or_create(
-                        john_deere_machine_id=machine_id,
-                        establishment=establishment,
-                        defaults={
-                            'device_id': f"jd_{machine_id}",
-                            'device_type': 'fuel_sensor',  # Default type for John Deere equipment
-                            'name': machine_name,
-                            'manufacturer': 'John Deere',
-                            'model': machine_model,
-                            'api_connection_status': 'pending'
-                        }
-                    )
-                    
-                    # Sync machine status with device
-                    sync_success = api.sync_machine_with_iot_device(machine_id, device)
-                    
-                    synced_devices.append({
-                        'device_id': device.device_id,
-                        'machine_id': machine_id,
-                        'name': machine_name,
-                        'created': created,
-                        'sync_success': sync_success,
-                        'status': device.status
-                    })
-                    
-                except Exception as e:
-                    errors.append({
-                        'machine_id': machine.get('id'),
-                        'error': str(e)
-                    })
-        
-        return Response({
-            'success': True,
-            'message': f'Synced {len(synced_devices)} devices',
-            'synced_devices': synced_devices,
-            'errors': errors if errors else None,
-            'organizations_found': len(organizations)
-        })
-        
-    except Exception as e:
-        logger.error(f"Failed to sync John Deere devices: {e}")
-        return Response({
-            'error': 'Device sync failed',
-            'message': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def weather_current_conditions(request):
-    """
-    Get current weather conditions for an establishment.
-    
-    Query Parameters:
-    - establishment_id: ID of the establishment
-    - lat: Latitude (optional, overrides establishment location)
-    - lng: Longitude (optional, overrides establishment location)
-    """
-    try:
-        establishment_id = request.GET.get('establishment_id')
-        lat = request.GET.get('lat')
-        lng = request.GET.get('lng')
-        
-        if not establishment_id and not (lat and lng):
-            return Response({
-                'error': 'Either establishment_id or lat/lng coordinates required'
-            }, status=400)
-        
-        # Get coordinates from establishment if not provided
-        if not (lat and lng):
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-                lat = establishment.latitude
-                lng = establishment.longitude
-                
-                if not (lat and lng):
-                    return Response({
-                        'error': 'Establishment does not have location coordinates'
-                    }, status=400)
-            except Establishment.DoesNotExist:
-                return Response({
-                    'error': 'Establishment not found'
-                }, status=404)
-        
-        # Get weather data
-        weather_service = get_weather_service()
-        weather_data = weather_service.get_current_conditions(float(lat), float(lng))
-        
-        return Response({
-            'status': 'success',
-            'establishment_id': establishment_id,
-            'location': {'lat': float(lat), 'lng': float(lng)},
-            'weather': weather_data,
-            'timestamp': timezone.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Weather conditions error: {e}")
-        return Response({
-            'error': f'Failed to get weather conditions: {str(e)}'
-        }, status=500)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def weather_alerts(request):
-    """
-    Get active weather alerts for an establishment.
-    
-    Query Parameters:
-    - establishment_id: ID of the establishment
-    - lat: Latitude (optional, overrides establishment location)
-    - lng: Longitude (optional, overrides establishment location)
-    """
-    try:
-        establishment_id = request.GET.get('establishment_id')
-        lat = request.GET.get('lat')
-        lng = request.GET.get('lng')
-        
-        if not establishment_id and not (lat and lng):
-            return Response({
-                'error': 'Either establishment_id or lat/lng coordinates required'
-            }, status=400)
-        
-        # Get coordinates from establishment if not provided
-        if not (lat and lng):
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-                lat = establishment.latitude
-                lng = establishment.longitude
-                
-                if not (lat and lng):
-                    return Response({
-                        'error': 'Establishment does not have location coordinates'
-                    }, status=400)
-            except Establishment.DoesNotExist:
-                return Response({
-                    'error': 'Establishment not found'
-                }, status=404)
-        
-        # Get weather alerts
-        alerts = check_weather_alerts(float(lat), float(lng))
-        
-        return Response({
-            'status': 'success',
-            'establishment_id': establishment_id,
-            'location': {'lat': float(lat), 'lng': float(lng)},
-            'alerts': alerts,
-            'alert_count': len(alerts),
-            'timestamp': timezone.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Weather alerts error: {e}")
-        return Response({
-            'error': f'Failed to get weather alerts: {str(e)}'
-        }, status=500)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def weather_recommendations(request):
-    """
-    Get agricultural recommendations based on current weather conditions.
-    
-    Query Parameters:
-    - establishment_id: ID of the establishment
-    - lat: Latitude (optional, overrides establishment location)
-    - lng: Longitude (optional, overrides establishment location)
-    - establishment_type: Type of agricultural operation (optional)
-    """
-    try:
-        establishment_id = request.GET.get('establishment_id')
-        lat = request.GET.get('lat')
-        lng = request.GET.get('lng')
-        establishment_type = request.GET.get('establishment_type')
-        
-        if not establishment_id and not (lat and lng):
-            return Response({
-                'error': 'Either establishment_id or lat/lng coordinates required'
-            }, status=400)
-        
-        # Get coordinates and type from establishment if not provided
-        if not (lat and lng) or not establishment_type:
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-                if not (lat and lng):
-                    lat = establishment.latitude
-                    lng = establishment.longitude
-                
-                if not establishment_type:
-                    establishment_type = getattr(establishment, 'establishment_type', 'general')
-                
-                if not (lat and lng):
-                    return Response({
-                        'error': 'Establishment does not have location coordinates'
-                    }, status=400)
-            except Establishment.DoesNotExist:
-                return Response({
-                    'error': 'Establishment not found'
-                }, status=404)
-        
-        # Get agricultural recommendations
-        recommendations = get_agricultural_recommendations(
-            float(lat), 
-            float(lng), 
-            establishment_type
-        )
-        
-        # Categorize recommendations by priority
-        critical_recommendations = [r for r in recommendations if r.get('priority') == 'critical']
-        high_recommendations = [r for r in recommendations if r.get('priority') == 'high']
-        medium_recommendations = [r for r in recommendations if r.get('priority') == 'medium']
-        low_recommendations = [r for r in recommendations if r.get('priority') == 'low']
-        
-        return Response({
-            'status': 'success',
-            'establishment_id': establishment_id,
-            'location': {'lat': float(lat), 'lng': float(lng)},
-            'establishment_type': establishment_type,
-            'recommendations': {
-                'critical': critical_recommendations,
-                'high': high_recommendations,
-                'medium': medium_recommendations,
-                'low': low_recommendations,
-                'total_count': len(recommendations)
-            },
-            'summary': {
-                'critical_count': len(critical_recommendations),
-                'high_count': len(high_recommendations),
-                'medium_count': len(medium_recommendations),
-                'low_count': len(low_recommendations),
-                'requires_immediate_action': len(critical_recommendations) + len(high_recommendations) > 0
-            },
-            'timestamp': timezone.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Weather recommendations error: {e}")
-        return Response({
-            'error': f'Failed to get weather recommendations: {str(e)}'
-        }, status=500)
-
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def weather_create_alert_event(request):
-    """
-    Create an IoT event based on weather conditions and recommendations.
-    
-    This endpoint allows automatic creation of weather-based events
-    that can trigger carbon calculations and recommendations.
-    """
-    try:
-        data = request.data
-        establishment_id = data.get('establishment_id')
-        weather_data = data.get('weather_data')
-        recommendations = data.get('recommendations', [])
-        
-        if not establishment_id:
-            return Response({
-                'error': 'establishment_id is required'
-            }, status=400)
-        
-        if not weather_data:
-            return Response({
-                'error': 'weather_data is required'
-            }, status=400)
-        
-        try:
-            establishment = Establishment.objects.get(id=establishment_id)
-        except Establishment.DoesNotExist:
-            return Response({
-                'error': 'Establishment not found'
-            }, status=404)
-        
-        # Create weather alert event
-        event_data = {
-            'establishment_id': establishment_id,
-            'event_type': 'weather_alert',
-            'description': f"Weather alert: {weather_data.get('description', 'Weather conditions require attention')}",
-            'metadata': {
-                'weather_conditions': weather_data,
-                'recommendations': recommendations,
-                'alert_type': 'automated_weather_monitoring',
-                'source': 'weather_api'
-            },
-            'confidence': 0.85,  # High confidence for weather data
-            'requires_approval': len([r for r in recommendations if r.get('priority') in ['critical', 'high']]) > 0
-        }
-        
-        # Create IoT data point for weather event
-        device, created = IoTDevice.objects.get_or_create(
-            establishment=establishment,
-            name=f"Weather Station - {establishment.name}",
-            defaults={
-                'device_type': 'weather_station',
-                'status': 'online',
-                'battery_level': 100,
-                'last_seen': timezone.now()
-            }
-        )
-        
-        data_point = IoTDataPoint.objects.create(
-            device=device,
-            data_type='weather_alert',
-            value=json.dumps(weather_data),
-            quality_score=0.9,  # High quality for official weather data
-            metadata=event_data['metadata'],
-            confidence=event_data['confidence']
-        )
-        
-        # Process through unified IoT workflow
-        if event_data['confidence'] > 0.9 and not event_data['requires_approval']:
-            # Auto-approve weather events with high confidence
-            # Note: Weather events typically don't create carbon entries directly
-            # but may trigger recommendations for carbon-reducing actions
-            logger.info(f"Auto-approved weather event for establishment {establishment_id}")
-            
-        return Response({
-            'status': 'success',
-            'message': 'Weather alert event created successfully',
-            'data_point_id': data_point.id,
-            'device_id': device.id,
-            'requires_approval': event_data['requires_approval'],
-            'confidence': event_data['confidence'],
-            'recommendations_count': len(recommendations)
-        }, status=201)
-        
-    except Exception as e:
-        logger.error(f"Weather alert event creation error: {e}")
-        return Response({
-            'error': f'Failed to create weather alert event: {str(e)}'
-        }, status=500)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def weather_forecast(request):
-    """
-    Get weather forecast for an establishment.
-    
-    Query Parameters:
-    - establishment_id: ID of the establishment
-    - lat: Latitude (optional, overrides establishment location)
-    - lng: Longitude (optional, overrides establishment location)
-    - days: Number of days to forecast (default: 7, max: 14)
-    """
-    try:
-        establishment_id = request.GET.get('establishment_id')
-        lat = request.GET.get('lat')
-        lng = request.GET.get('lng')
-        days = int(request.GET.get('days', 7))
-        
-        # Limit forecast days
-        days = min(days, 14)
-        
-        if not establishment_id and not (lat and lng):
-            return Response({
-                'error': 'Either establishment_id or lat/lng coordinates required'
-            }, status=400)
-        
-        # Get coordinates from establishment if not provided
-        if not (lat and lng):
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-                lat = establishment.latitude
-                lng = establishment.longitude
-                
-                if not (lat and lng):
-                    return Response({
-                        'error': 'Establishment does not have location coordinates'
-                    }, status=400)
-            except Establishment.DoesNotExist:
-                return Response({
-                    'error': 'Establishment not found'
-                }, status=404)
-        
-        # Get weather forecast
-        weather_service = get_weather_service()
-        forecast_data = weather_service.get_forecast(float(lat), float(lng), days)
-        
-        return Response({
-            'status': 'success',
-            'establishment_id': establishment_id,
-            'location': {'lat': float(lat), 'lng': float(lng)},
-            'forecast': forecast_data,
-            'forecast_days': days,
-            'timestamp': timezone.now().isoformat()
-        })
-        
-    except Exception as e:
-        logger.error(f"Weather forecast error: {e}")
-        return Response({
-            'error': f'Failed to get weather forecast: {str(e)}'
-        }, status=500)

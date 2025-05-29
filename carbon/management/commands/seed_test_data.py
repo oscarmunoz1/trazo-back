@@ -5,7 +5,8 @@ from product.models import Product, Parcel
 from history.models import History, WeatherEvent, ChemicalEvent, ProductionEvent, GeneralEvent, EquipmentEvent, SoilManagementEvent, BusinessEvent
 from carbon.models import (
     CarbonSource, CarbonEntry, CarbonCertification, CarbonBenchmark,
-    CarbonReport, SustainabilityBadge, CarbonOffsetProject, CarbonOffsetPurchase
+    CarbonReport, SustainabilityBadge, CarbonOffsetProject, CarbonOffsetPurchase,
+    IoTDevice, IoTDataPoint, AutomationRule
 )
 from subscriptions.models import Plan, Subscription
 from users.models import WorksIn
@@ -13,6 +14,8 @@ from django.utils import timezone
 import datetime
 from users.constants import PRODUCER
 import uuid
+import random
+import math
 
 User = get_user_model()
 
@@ -136,6 +139,9 @@ class Command(BaseCommand):
         # Create benchmarks and badges
         self.create_benchmarks_and_badges()
 
+        # Create IoT devices and simulate data
+        self.create_iot_devices_and_data(establishment, user)
+
         self.stdout.write(
             self.style.SUCCESS(
                 f'Successfully created comprehensive test data for {user.email}:\n'
@@ -144,6 +150,7 @@ class Command(BaseCommand):
                 f'- Parcel: {parcel.name}\n'
                 f'- Current Production: {current_production.name}\n'
                 f'- Finished Production: {finished_production.name}\n'
+                f'- IoT Devices: Created with realistic data points\n'
                 f'This data provides comprehensive operational information for accurate ROI calculations.'
             )
         )
@@ -446,5 +453,298 @@ class Command(BaseCommand):
                 'minimum_score': 80,
                 'is_automatic': True,
                 'usda_verified': True
+            }
+        )
+
+    def create_iot_devices_and_data(self, establishment, user):
+        """Create IoT devices and realistic data points to test automatic event generation"""
+        
+        # Clear existing IoT data to avoid duplicates
+        IoTDevice.objects.filter(establishment=establishment).delete()
+        IoTDataPoint.objects.filter(device__establishment=establishment).delete()
+        
+        # Create John Deere Fuel Sensor
+        fuel_sensor, _ = IoTDevice.objects.get_or_create(
+            device_id='JD_TRACTOR_001',
+            establishment=establishment,
+            defaults={
+                'device_type': 'fuel_sensor',
+                'name': 'John Deere 6120M Tractor',
+                'manufacturer': 'John Deere',
+                'model': '6120M',
+                'status': 'online',
+                'battery_level': 85,
+                'signal_strength': 'strong',
+                'latitude': 34.0522,
+                'longitude': -118.2437,
+                'last_maintenance': timezone.now() - datetime.timedelta(days=30)
+            }
+        )
+        
+        # Create Weather Station
+        weather_station, _ = IoTDevice.objects.get_or_create(
+            device_id='WS_STATION_001',
+            establishment=establishment,
+            defaults={
+                'device_type': 'weather_station',
+                'name': 'Davis Vantage Pro2',
+                'manufacturer': 'Davis Instruments',
+                'model': 'Vantage Pro2',
+                'status': 'online',
+                'battery_level': 92,
+                'signal_strength': 'excellent',
+                'latitude': 34.0525,
+                'longitude': -118.2435,
+                'last_maintenance': timezone.now() - datetime.timedelta(days=15)
+            }
+        )
+        
+        # Create Soil Moisture Sensor
+        soil_sensor, _ = IoTDevice.objects.get_or_create(
+            device_id='SOIL_SENSOR_001',
+            establishment=establishment,
+            defaults={
+                'device_type': 'soil_moisture',
+                'name': 'Sentek Drill & Drop Probe',
+                'manufacturer': 'Sentek',
+                'model': 'Drill & Drop',
+                'status': 'offline',  # Simulate offline device
+                'battery_level': 15,  # Low battery
+                'signal_strength': 'weak',
+                'latitude': 34.0520,
+                'longitude': -118.2440,
+                'last_maintenance': timezone.now() - datetime.timedelta(days=45)
+            }
+        )
+        
+        # Create Equipment Monitor
+        equipment_monitor, _ = IoTDevice.objects.get_or_create(
+            device_id='EQUIP_MONITOR_001',
+            establishment=establishment,
+            defaults={
+                'device_type': 'equipment_monitor',
+                'name': 'Citrus Harvester CH-200',
+                'manufacturer': 'Custom Harvester',
+                'model': 'CH-200',
+                'status': 'online',
+                'battery_level': 78,
+                'signal_strength': 'strong',
+                'latitude': 34.0518,
+                'longitude': -118.2442,
+                'last_maintenance': timezone.now() - datetime.timedelta(days=10)
+            }
+        )
+        
+        # Generate realistic fuel sensor data points (last 7 days)
+        self.create_fuel_sensor_data(fuel_sensor, user)
+        
+        # Generate realistic weather station data points (last 7 days)
+        self.create_weather_station_data(weather_station, user)
+        
+        # Generate realistic soil moisture data points (last 3 days before going offline)
+        self.create_soil_moisture_data(soil_sensor, user)
+        
+        # Generate realistic equipment monitor data points (last 5 days)
+        self.create_equipment_monitor_data(equipment_monitor, user)
+        
+        # Create automation rules
+        self.create_automation_rules(establishment, user)
+        
+        self.stdout.write(
+            self.style.SUCCESS(
+                f'Created IoT devices and data:\n'
+                f'- Fuel Sensor: {fuel_sensor.device_id} ({fuel_sensor.status})\n'
+                f'- Weather Station: {weather_station.device_id} ({weather_station.status})\n'
+                f'- Soil Sensor: {soil_sensor.device_id} ({soil_sensor.status})\n'
+                f'- Equipment Monitor: {equipment_monitor.device_id} ({equipment_monitor.status})\n'
+                f'- Generated realistic data points for automatic carbon calculations'
+            )
+        )
+    
+    def create_fuel_sensor_data(self, device, user):
+        """Create realistic fuel consumption data that should trigger automatic carbon calculations"""
+        for day in range(7):
+            date = timezone.now() - datetime.timedelta(days=day)
+            
+            # Simulate 2-3 fuel readings per day (morning and afternoon operations)
+            for reading in range(random.randint(2, 3)):
+                hour_offset = random.randint(6, 18)  # Operations between 6 AM and 6 PM
+                timestamp = date.replace(hour=hour_offset, minute=random.randint(0, 59))
+                
+                # Realistic fuel consumption: 12-18 liters per hour of operation
+                fuel_consumed = round(random.uniform(12.0, 18.0), 2)
+                engine_hours = round(random.uniform(1.0, 3.0), 1)
+                
+                IoTDataPoint.objects.create(
+                    device=device,
+                    timestamp=timestamp,
+                    data={
+                        'fuel_liters': fuel_consumed,
+                        'engine_hours': engine_hours,
+                        'fuel_efficiency': round(fuel_consumed / engine_hours, 2),
+                        'equipment_type': 'tractor',
+                        'operation_type': random.choice(['plowing', 'planting', 'harvesting', 'spraying']),
+                        'area_covered': round(random.uniform(0.5, 2.0), 1),  # hectares
+                        'gps_location': {
+                            'lat': 34.0522 + random.uniform(-0.001, 0.001),
+                            'lng': -118.2437 + random.uniform(-0.001, 0.001)
+                        }
+                    },
+                )
+    
+    def create_weather_station_data(self, device, user):
+        """Create realistic weather data that should trigger recommendations"""
+        for day in range(7):
+            # Generate 24 hourly readings per day
+            for hour in range(24):
+                timestamp = timezone.now() - datetime.timedelta(days=day, hours=23-hour)
+                
+                # Realistic weather patterns for California citrus region
+                base_temp = 22  # Base temperature in Celsius
+                temp_variation = 8 * math.sin((hour - 6) * math.pi / 12)  # Daily temperature cycle
+                temperature = round(base_temp + temp_variation + random.uniform(-2, 2), 1)
+                
+                # Humidity inversely related to temperature
+                humidity = round(70 - (temperature - 20) * 2 + random.uniform(-10, 10), 1)
+                humidity = max(20, min(95, humidity))  # Keep within realistic bounds
+                
+                # Wind speed - typically higher during day
+                wind_speed = round(random.uniform(5, 25) if 8 <= hour <= 18 else random.uniform(2, 12), 1)
+                
+                # Pressure
+                pressure = round(1013 + random.uniform(-15, 15), 1)
+                
+                IoTDataPoint.objects.create(
+                    device=device,
+                    timestamp=timestamp,
+                    data={
+                        'temperature': temperature,
+                        'humidity': humidity,
+                        'wind_speed': wind_speed,
+                        'pressure': pressure,
+                        'solar_radiation': round(random.uniform(0, 1200) if 6 <= hour <= 19 else 0, 1),
+                        'rainfall': round(random.uniform(0, 2) if random.random() < 0.1 else 0, 1),  # 10% chance of rain
+                        'uv_index': round(random.uniform(0, 11) if 8 <= hour <= 17 else 0, 1)
+                    },
+                )
+    
+    def create_soil_moisture_data(self, device, user):
+        """Create soil moisture data for 3 days before device went offline"""
+        for day in range(3, 0, -1):  # 3 days ago to 1 day ago
+            # Generate 4 readings per day (every 6 hours)
+            for reading in range(4):
+                timestamp = timezone.now() - datetime.timedelta(days=day, hours=reading*6)
+                
+                # Soil moisture decreasing over time (needs irrigation)
+                base_moisture = 45 - (3-day) * 5  # Decreasing moisture
+                moisture = round(base_moisture + random.uniform(-3, 3), 1)
+                moisture = max(15, min(60, moisture))  # Keep within realistic bounds
+                
+                IoTDataPoint.objects.create(
+                    device=device,
+                    timestamp=timestamp,
+                    data={
+                        'soil_moisture_percent': moisture,
+                        'soil_temperature': round(random.uniform(18, 25), 1),
+                        'soil_ph': round(random.uniform(6.2, 6.8), 1),
+                        'electrical_conductivity': round(random.uniform(0.8, 1.5), 2),
+                        'depth_cm': 30,
+                        'sensor_location': 'North Field - Zone A'
+                    },
+                )
+    
+    def create_equipment_monitor_data(self, device, user):
+        """Create equipment monitoring data for harvester"""
+        for day in range(5):
+            date = timezone.now() - datetime.timedelta(days=day)
+            
+            # Simulate 1-2 harvesting sessions per day
+            for session in range(random.randint(1, 2)):
+                hour_offset = random.randint(7, 16)  # Harvesting during daylight
+                timestamp = date.replace(hour=hour_offset, minute=random.randint(0, 59))
+                
+                # Harvester performance metrics
+                fuel_consumption = round(random.uniform(25, 35), 2)  # L/hour
+                harvest_rate = round(random.uniform(800, 1200), 1)  # kg/hour
+                
+                IoTDataPoint.objects.create(
+                    device=device,
+                    timestamp=timestamp,
+                    data={
+                        'fuel_consumption_lph': fuel_consumption,
+                        'harvest_rate_kgh': harvest_rate,
+                        'engine_rpm': random.randint(1800, 2200),
+                        'hydraulic_pressure': round(random.uniform(180, 220), 1),
+                        'conveyor_speed': round(random.uniform(1.2, 1.8), 1),
+                        'fruit_quality_score': round(random.uniform(8.5, 9.5), 1),
+                        'operational_hours': round(random.uniform(2, 6), 1),
+                        'maintenance_alerts': random.choice([[], ['Filter replacement due'], ['Oil change recommended']])
+                    },
+                )
+    
+    def create_automation_rules(self, establishment, user):
+        """Create automation rules for IoT data processing"""
+        
+        # Rule for high fuel consumption alerts
+        AutomationRule.objects.get_or_create(
+            name='High Fuel Consumption Alert',
+            establishment=establishment,
+            defaults={
+                'device_type': 'fuel_sensor',
+                'trigger_type': 'threshold',
+                'trigger_config': {
+                    'fuel_efficiency': {'operator': 'greater_than', 'value': 16}  # L/hour
+                },
+                'action_type': 'send_alert',
+                'action_config': {
+                    'message': 'High fuel consumption detected - check equipment efficiency',
+                    'severity': 'medium',
+                    'notify_users': [user.id]
+                },
+                'is_active': True,
+                'created_by': user
+            }
+        )
+        
+        # Rule for extreme weather alerts
+        AutomationRule.objects.get_or_create(
+            name='Extreme Weather Alert',
+            establishment=establishment,
+            defaults={
+                'device_type': 'weather_station',
+                'trigger_type': 'threshold',
+                'trigger_config': {
+                    'temperature': {'operator': 'greater_than', 'value': 35},
+                    'wind_speed': {'operator': 'greater_than', 'value': 25}
+                },
+                'action_type': 'send_alert',
+                'action_config': {
+                    'message': 'Extreme weather conditions - consider protective measures',
+                    'severity': 'high',
+                    'notify_users': [user.id]
+                },
+                'is_active': True,
+                'created_by': user
+            }
+        )
+        
+        # Rule for low soil moisture irrigation trigger
+        AutomationRule.objects.get_or_create(
+            name='Low Soil Moisture Irrigation',
+            establishment=establishment,
+            defaults={
+                'device_type': 'soil_moisture',
+                'trigger_type': 'threshold',
+                'trigger_config': {
+                    'soil_moisture_percent': {'operator': 'less_than', 'value': 25}
+                },
+                'action_type': 'create_event',
+                'action_config': {
+                    'irrigation_duration': 30,  # minutes
+                    'irrigation_zone': 'North Field',
+                    'notify_users': [user.id]
+                },
+                'is_active': True,
+                'created_by': user
             }
         ) 

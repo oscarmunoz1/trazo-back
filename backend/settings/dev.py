@@ -64,3 +64,26 @@ CACHES = {
         }
     }
 }
+
+# John Deere API Configuration
+JOHN_DEERE_CLIENT_ID = os.environ.get('JOHN_DEERE_CLIENT_ID', 'test_client_id')
+JOHN_DEERE_CLIENT_SECRET = os.environ.get('JOHN_DEERE_CLIENT_SECRET', 'test_client_secret')
+JOHN_DEERE_REDIRECT_URI = os.environ.get('JOHN_DEERE_REDIRECT_URI', 'http://localhost:8000/carbon/john-deere/callback/')
+JOHN_DEERE_USE_SANDBOX = os.environ.get('JOHN_DEERE_USE_SANDBOX', 'True').lower() == 'true'
+
+# Weather API Configuration
+# NOAA Weather Service (free, no API key required for US locations)
+NOAA_API_BASE_URL = "https://api.weather.gov"
+
+# OpenWeatherMap (backup service, requires API key)
+OPENWEATHER_API_KEY = os.environ.get('OPENWEATHER_API_KEY', None)
+OPENWEATHER_BASE_URL = "https://api.openweathermap.org/data/2.5"
+
+# Weather alert thresholds (can be customized per establishment)
+WEATHER_ALERT_THRESHOLDS = {
+    'high_temp': 85,  # Fahrenheit
+    'low_temp': 35,   # Fahrenheit
+    'high_wind': 20,  # mph
+    'low_humidity': 30,  # percentage
+    'high_humidity': 85  # percentage
+}

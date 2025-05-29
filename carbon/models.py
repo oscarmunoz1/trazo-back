@@ -5,6 +5,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
+from datetime import timedelta
 
 # Create your models here.
 
@@ -370,3 +371,225 @@ class CarbonOffsetCertificate(models.Model):
 
     def __str__(self):
         return self.certificate_number
+
+# IoT Device Management Models
+
+class IoTDevice(models.Model):
+    """Model for tracking IoT devices connected to establishments."""
+    
+    DEVICE_TYPES = [
+        ('fuel_sensor', 'Fuel Consumption Sensor'),
+        ('weather_station', 'Weather Station'),
+        ('soil_moisture', 'Soil Moisture Sensor'),
+        ('irrigation', 'Irrigation Controller'),
+        ('equipment_monitor', 'Equipment Monitor'),
+        ('gps_tracker', 'GPS Tracker'),
+    ]
+    
+    STATUS_CHOICES = [
+        ('online', 'Online'),
+        ('offline', 'Offline'),
+        ('maintenance', 'Under Maintenance'),
+        ('error', 'Error State'),
+    ]
+    
+    device_id = models.CharField(max_length=100, unique=True, help_text="Unique device identifier")
+    device_type = models.CharField(max_length=20, choices=DEVICE_TYPES)
+    establishment = models.ForeignKey('company.Establishment', on_delete=models.CASCADE, related_name='iot_devices')
+    name = models.CharField(max_length=200, help_text="Human-readable device name")
+    manufacturer = models.CharField(max_length=100, blank=True)
+    model = models.CharField(max_length=100, blank=True)
+    
+    # Status and monitoring
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='offline')
+    last_seen = models.DateTimeField(null=True, blank=True)
+    battery_level = models.IntegerField(null=True, blank=True, help_text="Battery percentage (0-100)")
+    signal_strength = models.CharField(max_length=20, blank=True, help_text="Signal strength indicator")
+    
+    # Location and configuration
+    latitude = models.DecimalField(max_digits=10, decimal_places=8, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=11, decimal_places=8, null=True, blank=True)
+    configuration = models.JSONField(default=dict, help_text="Device-specific configuration")
+    
+    # John Deere API Integration
+    john_deere_machine_id = models.CharField(max_length=100, null=True, blank=True, help_text="John Deere machine ID for API integration")
+    last_api_sync = models.DateTimeField(null=True, blank=True, help_text="Last successful API synchronization")
+    api_connection_status = models.CharField(max_length=20, default='disconnected', choices=[
+        ('connected', 'Connected'),
+        ('disconnected', 'Disconnected'),
+        ('error', 'Connection Error'),
+        ('pending', 'Connection Pending'),
+    ], help_text="Status of API connection")
+    api_error_message = models.TextField(blank=True, help_text="Last API error message if any")
+    
+    # Metadata
+    installed_date = models.DateTimeField(auto_now_add=True)
+    last_maintenance = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    
+    # Data tracking
+    total_data_points = models.IntegerField(default=0)
+    last_data_received = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'carbon_iot_device'
+        ordering = ['establishment', 'device_type', 'name']
+        
+    def __str__(self):
+        return f"{self.name} ({self.device_id}) - {self.establishment.name}"
+    
+    def update_status(self, status='online'):
+        """Update device status and last seen timestamp."""
+        self.status = status
+        self.last_seen = timezone.now()
+        if status == 'online':
+            self.last_data_received = timezone.now()
+        self.save(update_fields=['status', 'last_seen', 'last_data_received'])
+    
+    def increment_data_points(self):
+        """Increment the total data points counter."""
+        self.total_data_points += 1
+        self.last_data_received = timezone.now()
+        self.save(update_fields=['total_data_points', 'last_data_received'])
+    
+    @property
+    def is_online(self):
+        """Check if device is considered online (data received within last hour)."""
+        if not self.last_seen:
+            return False
+        return timezone.now() - self.last_seen < timedelta(hours=1)
+    
+    @property
+    def needs_maintenance(self):
+        """Check if device needs maintenance based on battery or last maintenance date."""
+        if self.battery_level and self.battery_level < 20:
+            return True
+        if self.last_maintenance:
+            return timezone.now() - self.last_maintenance > timedelta(days=90)
+        return timezone.now() - self.installed_date > timedelta(days=90)
+
+
+class IoTDataPoint(models.Model):
+    """Model for storing raw IoT data points."""
+    
+    device = models.ForeignKey(IoTDevice, on_delete=models.CASCADE, related_name='data_points')
+    timestamp = models.DateTimeField()
+    data = models.JSONField(help_text="Raw sensor data")
+    processed = models.BooleanField(default=False, help_text="Whether this data has been processed into carbon entries")
+    
+    # Optional carbon entry link if this data point created a carbon entry
+    carbon_entry = models.ForeignKey(CarbonEntry, on_delete=models.SET_NULL, null=True, blank=True)
+    
+    # Data quality indicators
+    quality_score = models.FloatField(default=1.0, help_text="Data quality score (0.0-1.0)")
+    anomaly_detected = models.BooleanField(default=False)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'carbon_iot_data_point'
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['device', '-timestamp']),
+            models.Index(fields=['processed', '-timestamp']),
+        ]
+    
+    def __str__(self):
+        return f"{self.device.device_id} - {self.timestamp}"
+    
+    def mark_processed(self, carbon_entry=None):
+        """Mark this data point as processed."""
+        self.processed = True
+        if carbon_entry:
+            self.carbon_entry = carbon_entry
+        self.save(update_fields=['processed', 'carbon_entry'])
+
+
+class AutomationRule(models.Model):
+    """Model for defining automation rules based on IoT data."""
+    
+    TRIGGER_TYPES = [
+        ('threshold', 'Threshold Trigger'),
+        ('pattern', 'Pattern Recognition'),
+        ('schedule', 'Scheduled Trigger'),
+        ('weather', 'Weather Condition'),
+        ('combination', 'Multiple Conditions'),
+    ]
+    
+    ACTION_TYPES = [
+        ('create_event', 'Create Carbon Event'),
+        ('send_alert', 'Send Alert'),
+        ('update_status', 'Update Status'),
+        ('trigger_webhook', 'Trigger Webhook'),
+        ('generate_report', 'Generate Report'),
+    ]
+    
+    name = models.CharField(max_length=200)
+    establishment = models.ForeignKey('company.Establishment', on_delete=models.CASCADE, related_name='automation_rules')
+    device_type = models.CharField(max_length=20, choices=IoTDevice.DEVICE_TYPES, blank=True, help_text="Apply to specific device type")
+    
+    # Rule configuration
+    trigger_type = models.CharField(max_length=20, choices=TRIGGER_TYPES)
+    trigger_config = models.JSONField(help_text="Trigger configuration (thresholds, patterns, etc.)")
+    action_type = models.CharField(max_length=20, choices=ACTION_TYPES)
+    action_config = models.JSONField(help_text="Action configuration")
+    
+    # Rule status
+    is_active = models.BooleanField(default=True)
+    last_triggered = models.DateTimeField(null=True, blank=True)
+    trigger_count = models.IntegerField(default=0)
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey('users.User', on_delete=models.CASCADE)
+    description = models.TextField(blank=True)
+    
+    class Meta:
+        db_table = 'carbon_automation_rule'
+        ordering = ['establishment', 'name']
+    
+    def __str__(self):
+        return f"{self.name} - {self.establishment.name}"
+    
+    def evaluate_trigger(self, data_point):
+        """Evaluate if this rule should trigger based on a data point."""
+        if not self.is_active:
+            return False
+        
+        # Implementation would depend on trigger_type and trigger_config
+        # This is a simplified example
+        if self.trigger_type == 'threshold':
+            field = self.trigger_config.get('field')
+            threshold = self.trigger_config.get('threshold')
+            operator = self.trigger_config.get('operator', 'gt')
+            
+            if field in data_point.data:
+                value = data_point.data[field]
+                if operator == 'gt' and value > threshold:
+                    return True
+                elif operator == 'lt' and value < threshold:
+                    return True
+                elif operator == 'eq' and value == threshold:
+                    return True
+        
+        return False
+    
+    def execute_action(self, data_point):
+        """Execute the action defined by this rule."""
+        if self.action_type == 'create_event':
+            # Create a carbon entry based on the action config
+            event_config = self.action_config
+            CarbonEntry.objects.create(
+                establishment=self.establishment,
+                type=event_config.get('type', 'emission'),
+                source=event_config.get('source', f'Auto: {self.name}'),
+                amount=event_config.get('amount', 0),
+                year=timezone.now().year,
+                description=f'Auto-generated from rule: {self.name}',
+                created_by=self.created_by
+            )
+        
+        # Update trigger statistics
+        self.last_triggered = timezone.now()
+        self.trigger_count += 1
+        self.save(update_fields=['last_triggered', 'trigger_count'])
