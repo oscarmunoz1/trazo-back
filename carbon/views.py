@@ -42,7 +42,6 @@ from .serializers import (
     CarbonOffsetCertificateSerializer
 )
 from .services import coolfarm_service
-from .services.cost_optimizer import CostOptimizer
 from django.contrib.auth import get_user_model
 from company.models import Establishment
 from history.models import History
@@ -326,464 +325,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
         return Response(summary_data)
 
 
-# ROI Calculation and Cost Optimization Endpoints
-class CostOptimizationViewSet(viewsets.ViewSet):
-    """
-    ViewSet for cost optimization and ROI calculation services.
-    Provides savings analysis and recommendations for agricultural operations.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @action(detail=False, methods=['post'], url_path='calculate-savings')
-    def calculate_savings(self, request):
-        """
-        Calculate comprehensive savings potential for an establishment.
-        Expected payload: {'establishment_id': int}
-        """
-        try:
-            establishment_id = request.data.get('establishment_id')
-            
-            if not establishment_id:
-                return Response(
-                    {'error': 'establishment_id is required'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Verify establishment exists
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-            except Establishment.DoesNotExist:
-                return Response(
-                    {'error': 'Establishment not found'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Initialize cost optimizer and calculate savings
-            optimizer = CostOptimizer()
-            savings_analysis = optimizer.calculate_savings_potential(establishment_id)
-            
-            # Log the analysis for audit trail
-            CarbonAuditLog.objects.create(
-                user=request.user,
-                action='create',
-                details=f'Generated savings analysis for establishment {establishment_id}'
-            )
-            
-            return Response(savings_analysis, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Error calculating savings potential: {str(e)}")
-            return Response(
-                {
-                    'error': 'Failed to calculate savings potential',
-                    'details': str(e),
-                    'total_annual_savings': 0,
-                    'recommendations': []
-                }, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['get'], url_path='equipment-marketplace')
-    def equipment_marketplace(self, request):
-        """
-        Get equipment marketplace recommendations based on current usage patterns.
-        Query params: establishment_id (required)
-        """
-        try:
-            establishment_id = request.query_params.get('establishment_id')
-            
-            if not establishment_id:
-                return Response(
-                    {'error': 'establishment_id query parameter is required'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            try:
-                establishment = Establishment.objects.get(id=establishment_id)
-            except Establishment.DoesNotExist:
-                return Response(
-                    {'error': 'Establishment not found'}, 
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            # Mock equipment marketplace data (replace with real marketplace integration)
-            equipment_recommendations = [
-                {
-                    'id': 'tractor_upgrade_2024',
-                    'category': 'tractor',
-                    'title': 'Fuel-Efficient Compact Tractor',
-                    'brand': 'John Deere 3038E',
-                    'description': 'Modern compact tractor with 30% better fuel efficiency',
-                    'current_cost': 18000,
-                    'annual_savings': 1200,
-                    'payback_months': 18,
-                    'efficiency_improvement': '30%',
-                    'features': [
-                        'Advanced fuel injection system',
-                        'Precision steering and GPS ready',
-                        'Reduced maintenance requirements',
-                        'IoT connectivity for tracking'
-                    ],
-                    'financing_options': [
-                        {'type': 'lease', 'monthly_payment': 320, 'term_months': 60},
-                        {'type': 'loan', 'monthly_payment': 285, 'term_months': 72, 'interest_rate': 4.5}
-                    ],
-                    'carbon_impact': {
-                        'co2_reduction_annually': 2.4,  # tons
-                        'efficiency_score_improvement': 25
-                    }
-                },
-                {
-                    'id': 'irrigation_system_2024',
-                    'category': 'irrigation',
-                    'title': 'Smart Drip Irrigation System',
-                    'brand': 'Rain Bird XFS Subsurface',
-                    'description': 'Precision irrigation with soil moisture sensors',
-                    'current_cost': 8500,
-                    'annual_savings': 800,
-                    'payback_months': 13,
-                    'efficiency_improvement': '40%',
-                    'features': [
-                        'Soil moisture monitoring',
-                        'Weather-based scheduling',
-                        'Mobile app control',
-                        'Water usage analytics'
-                    ],
-                    'financing_options': [
-                        {'type': 'rebate', 'discount_amount': 2000, 'program': 'USDA Water Conservation'},
-                        {'type': 'loan', 'monthly_payment': 180, 'term_months': 48, 'interest_rate': 3.9}
-                    ],
-                    'carbon_impact': {
-                        'co2_reduction_annually': 1.8,
-                        'efficiency_score_improvement': 20
-                    }
-                },
-                {
-                    'id': 'sprayer_upgrade_2024',
-                    'category': 'sprayer',
-                    'title': 'Precision Chemical Applicator',
-                    'brand': 'Apache AS1240',
-                    'description': 'Variable rate technology for reduced chemical waste',
-                    'current_cost': 45000,
-                    'annual_savings': 3500,
-                    'payback_months': 15,
-                    'efficiency_improvement': '35%',
-                    'features': [
-                        'Variable rate technology',
-                        'GPS section control',
-                        'Real-time application monitoring',
-                        'Reduced chemical waste'
-                    ],
-                    'financing_options': [
-                        {'type': 'lease', 'monthly_payment': 850, 'term_months': 60},
-                        {'type': 'trade_in', 'trade_value': 12000, 'net_cost': 33000}
-                    ],
-                    'carbon_impact': {
-                        'co2_reduction_annually': 4.2,
-                        'efficiency_score_improvement': 30
-                    }
-                }
-            ]
-            
-            return Response({
-                'establishment_id': establishment_id,
-                'marketplace_updated': timezone.now().isoformat(),
-                'equipment_recommendations': equipment_recommendations,
-                'financing_programs': [
-                    {
-                        'name': 'USDA Rural Development Loan',
-                        'description': 'Low-interest loans for agricultural equipment',
-                        'max_amount': 100000,
-                        'interest_rate': 3.5,
-                        'term_years': 10
-                    },
-                    {
-                        'name': 'Farm Service Agency Equipment Loan',
-                        'description': 'Government-backed loans for qualifying farmers',
-                        'max_amount': 200000,
-                        'interest_rate': 4.0,
-                        'term_years': 15
-                    }
-                ],
-                'rebate_programs': [
-                    {
-                        'name': 'Environmental Quality Incentives Program (EQIP)',
-                        'description': 'Cost-share assistance for conservation practices',
-                        'max_rebate': 0.75,  # 75% cost share
-                        'eligible_categories': ['irrigation', 'conservation_tillage', 'nutrient_management']
-                    }
-                ]
-            }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Error fetching equipment marketplace: {str(e)}")
-            return Response(
-                {
-                    'error': 'Failed to fetch equipment marketplace data',
-                    'details': str(e),
-                    'equipment_recommendations': []
-                }, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['post'], url_path='bulk-purchasing')
-    def bulk_purchasing_opportunities(self, request):
-        """
-        Analyze bulk purchasing opportunities for chemical inputs.
-        Expected payload: {'establishment_ids': [int], 'chemical_types': [str]}
-        """
-        try:
-            establishment_ids = request.data.get('establishment_ids', [])
-            chemical_types = request.data.get('chemical_types', ['FE', 'PE', 'HE', 'FU'])
-            
-            if not establishment_ids:
-                return Response(
-                    {'error': 'establishment_ids is required'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Aggregate chemical usage across establishments
-            total_usage = {}
-            total_cost = 0
-            
-            for establishment_id in establishment_ids:
-                try:
-                    establishment = Establishment.objects.get(id=establishment_id)
-                    productions = History.objects.filter(parcel__establishment=establishment)
-                    
-                    for production in productions:
-                        chemical_events = ChemicalEvent.objects.filter(
-                            history=production,
-                            type__in=chemical_types
-                        )
-                        
-                        for event in chemical_events:
-                            chemical_type = event.type
-                            if chemical_type not in total_usage:
-                                total_usage[chemical_type] = {
-                                    'volume': 0,
-                                    'estimated_cost': 0,
-                                    'events_count': 0
-                                }
-                            
-                            # Extract volume and estimate cost
-                            optimizer = CostOptimizer()
-                            volume = optimizer._extract_numeric_value(event.volume or "0")
-                            cost = optimizer._estimate_chemical_cost_from_event(event)
-                            
-                            total_usage[chemical_type]['volume'] += volume
-                            total_usage[chemical_type]['estimated_cost'] += cost
-                            total_usage[chemical_type]['events_count'] += 1
-                            total_cost += cost
-                            
-                except Establishment.DoesNotExist:
-                    continue
-            
-            # Calculate bulk discounts and savings opportunities
-            bulk_opportunities = []
-            total_potential_savings = 0
-            
-            for chemical_type, usage_data in total_usage.items():
-                if usage_data['estimated_cost'] > 1000:  # Minimum threshold for bulk pricing
-                    chemical_name = dict(ChemicalEvent.CHEMICAL_EVENTS)[chemical_type]
-                    
-                    # Calculate bulk discount (15-20% for large orders)
-                    bulk_discount = 0.18 if usage_data['estimated_cost'] > 5000 else 0.12
-                    potential_savings = usage_data['estimated_cost'] * bulk_discount
-                    total_potential_savings += potential_savings
-                    
-                    bulk_opportunities.append({
-                        'chemical_type': chemical_type,
-                        'chemical_name': chemical_name,
-                        'total_volume': usage_data['volume'],
-                        'total_cost': usage_data['estimated_cost'],
-                        'events_count': usage_data['events_count'],
-                        'bulk_discount_percentage': bulk_discount * 100,
-                        'potential_savings': potential_savings,
-                        'recommended_suppliers': [
-                            {
-                                'name': 'AgriSupply Co-op',
-                                'discount': bulk_discount,
-                                'minimum_order': 5000,
-                                'delivery_included': True,
-                                'contact': 'bulk@agrisupply.com'
-                            },
-                            {
-                                'name': 'Farm Chemical Direct',
-                                'discount': bulk_discount - 0.02,
-                                'minimum_order': 3000,
-                                'delivery_included': False,
-                                'contact': '1-800-FARM-CHEM'
-                            }
-                        ]
-                    })
-
-            return Response({
-                    'analysis_date': timezone.now().isoformat(),
-                    'establishments_analyzed': len(establishment_ids),
-                    'total_annual_cost': total_cost,
-                    'total_potential_savings': total_potential_savings,
-                    'savings_percentage': (total_potential_savings / max(total_cost, 1)) * 100,
-                    'bulk_opportunities': bulk_opportunities,
-                    'coordination_tips': [
-                        'Contact neighboring farms to increase order volumes',
-                        'Plan seasonal chemical needs 3-6 months in advance',
-                        'Ensure proper storage facilities for bulk orders',
-                        'Consider shared storage and delivery arrangements'
-                    ]
-                }, status=status.HTTP_200_OK)
-            
-        except Exception as e:
-            logger.error(f"Error analyzing bulk purchasing: {str(e)}")
-            return Response(
-                {
-                    'error': 'Failed to analyze bulk purchasing opportunities',
-                    'details': str(e),
-                    'bulk_opportunities': []
-                }, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    @action(detail=False, methods=['get'], url_path='government-incentives')
-    def government_incentives(self, request):
-        """
-        Get available government incentives and grants for sustainability practices.
-        Query params: establishment_id, location (optional)
-        """
-        try:
-            establishment_id = request.query_params.get('establishment_id')
-            location = request.query_params.get('location', 'US')  # Default to US
-            
-            # Mock government incentives data (replace with real government API integration)
-            incentives = [
-                {
-                    'id': 'eqip_2024',
-                    'program': 'Environmental Quality Incentives Program (EQIP)',
-                    'agency': 'USDA NRCS',
-                    'type': 'cost_share',
-                    'max_payment': 200000,
-                    'cost_share_percentage': 75,
-                    'eligible_practices': [
-                        'Cover crop',
-                        'Nutrient management',
-                        'Integrated pest management',
-                        'Conservation tillage',
-                        'Irrigation water management'
-                    ],
-                    'application_deadline': '2024-03-15',
-                    'application_status': 'open',
-                    'estimated_approval_time': '90 days',
-                    'contact_info': {
-                        'office': 'Local NRCS Office',
-                        'phone': '1-800-NRCS-HELP',
-                        'website': 'https://www.nrcs.usda.gov/programs-initiatives/eqip'
-                    }
-                },
-                {
-                    'id': 'csp_2024',
-                    'program': 'Conservation Stewardship Program (CSP)',
-                    'agency': 'USDA NRCS',
-                    'type': 'annual_payment',
-                    'max_payment': 40000,
-                    'payment_structure': 'per_acre_per_year',
-                    'eligible_practices': [
-                        'Carbon sequestration',
-                        'Soil health improvement',
-                        'Water quality protection',
-                        'Wildlife habitat enhancement'
-                    ],
-                    'contract_length': '5 years',
-                    'application_deadline': '2024-02-28',
-                    'application_status': 'open',
-                    'estimated_approval_time': '120 days',
-                    'contact_info': {
-                        'office': 'Local NRCS Office',
-                        'phone': '1-800-NRCS-HELP',
-                        'website': 'https://www.nrcs.usda.gov/programs-initiatives/csp'
-                    }
-                },
-                {
-                    'id': 'carbon_credit_2024',
-                    'program': 'Climate Smart Agriculture Carbon Credits',
-                    'agency': 'Private Market / USDA Partnership',
-                    'type': 'market_payment',
-                    'payment_rate': '15-30 per ton CO2e',
-                    'eligible_practices': [
-                        'No-till farming',
-                        'Cover crops',
-                        'Rotational grazing',
-                        'Agroforestry'
-                    ],
-                    'contract_length': '10 years',
-                    'verification_required': True,
-                    'application_status': 'continuous',
-                    'estimated_approval_time': '60 days',
-                    'contact_info': {
-                        'program': 'Nori Carbon Markets',
-                        'website': 'https://nori.com',
-                        'email': 'farmers@nori.com'
-                    }
-                },
-                {
-                    'id': 'reap_2024',
-                    'program': 'Rural Energy for America Program (REAP)',
-                    'agency': 'USDA Rural Development',
-                    'type': 'grant_loan',
-                    'max_grant': 500000,
-                    'max_loan': 25000000,
-                    'grant_percentage': 25,
-                    'eligible_technologies': [
-                        'Solar panels',
-                        'Wind turbines',
-                        'Biomass systems',
-                        'Energy efficiency improvements'
-                    ],
-                    'application_deadline': '2024-04-30',
-                    'application_status': 'open',
-                    'estimated_approval_time': '180 days',
-                    'contact_info': {
-                        'office': 'USDA Rural Development',
-                        'phone': '1-800-RD-APPLY',
-                        'website': 'https://www.rd.usda.gov/programs-services/energy-programs/rural-energy-america-program-renewable-energy-systems-energy-efficiency-improvement-grants'
-                    }
-                }
-            ]
-            
-            # Filter incentives based on establishment characteristics if available
-            if establishment_id:
-                try:
-                    establishment = Establishment.objects.get(id=establishment_id)
-                    # Add establishment-specific filtering logic here
-                except Establishment.DoesNotExist:
-                    pass
-                
-                    return Response({
-                        'location': location,
-                        'last_updated': timezone.now().isoformat(),
-                        'available_incentives': incentives,
-                        'application_tips': [
-                            'Contact local NRCS office for personalized guidance',
-                            'Prepare detailed conservation plans before applying',
-                            'Apply early as funding is limited and competitive',
-                            'Consider combining multiple programs for maximum benefit',
-                            'Keep detailed records of current practices for baseline'
-                        ],
-                        'total_potential_value': sum(
-                            incentive.get('max_payment', 0) for incentive in incentives 
-                            if incentive.get('type') in ['cost_share', 'grant_loan']
-                        )
-                    }, status=status.HTTP_200_OK)
-                
-        except Exception as e:
-            logger.error(f"Error fetching government incentives: {str(e)}")
-            return Response(
-                {
-                    'error': 'Failed to fetch government incentives',
-                    'details': str(e),
-                    'available_incentives': []
-                }, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+# Carbon Footprint Calculator and Analysis Endpoints
 
 
 # Real-time Carbon Calculation API
@@ -922,7 +464,193 @@ class PublicProductionViewSet(viewsets.ViewSet):
 
     @action(detail=True, methods=['get'], url_path='qr-summary')
     def qr_summary(self, request, pk=None):
-        return Response({'message': 'QR summary'}, status=status.HTTP_200_OK)
+        try:
+            # Get the production/history record
+            from history.models import History
+            from company.models import Establishment
+            
+            production = History.objects.get(id=pk, published=True)
+            establishment = production.parcel.establishment if production.parcel else None
+            
+            if not establishment:
+                return Response({
+                    'error': 'No establishment found for this production'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Get carbon entries for this production
+            production_entries = CarbonEntry.objects.filter(production=production)
+            establishment_entries = CarbonEntry.objects.filter(establishment=establishment)
+            
+            # Calculate totals from production-specific entries first, fall back to establishment
+            if production_entries.exists():
+                entries = production_entries
+            else:
+                entries = establishment_entries.filter(year=production.start_date.year if production.start_date else timezone.now().year)
+            
+            total_emissions = entries.filter(type='emission').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+            total_offsets = entries.filter(type='offset').aggregate(Sum('co2e_amount'))['co2e_amount__sum'] or 0
+            net_footprint = total_emissions - total_offsets
+            
+            # Calculate carbon score (0-100 scale)
+            carbon_score = 0
+            if total_emissions > 0:
+                offset_percentage = min(100, (total_offsets / total_emissions) * 100)
+                if offset_percentage >= 100:
+                    carbon_score = 85 + min(15, ((offset_percentage - 100) / 50) * 15)
+                else:
+                    carbon_score = offset_percentage * 0.85
+            elif total_offsets > 0:
+                carbon_score = 95  # High score for carbon negative
+            else:
+                carbon_score = 50  # Default score when no data
+            
+            carbon_score = round(carbon_score)
+            
+            # Get industry benchmark and calculate percentile
+            industry_percentile = 0
+            industry_average = 0
+            
+            try:
+                # Try to get industry type from establishment
+                industry = getattr(establishment, 'industry', None) or getattr(establishment, 'type', 'agriculture')
+                
+                benchmark = CarbonBenchmark.objects.filter(
+                    industry=industry,
+                    year=production.start_date.year if production.start_date else timezone.now().year
+                ).first()
+                
+                if benchmark:
+                    industry_average = benchmark.average_emissions
+                    # Calculate percentile - if our net footprint is lower, we're better
+                    if industry_average > 0:
+                        if net_footprint <= 0:
+                            industry_percentile = 95  # Very good if carbon neutral/negative
+                        elif net_footprint < industry_average:
+                            # Better than average
+                            ratio = net_footprint / industry_average
+                            industry_percentile = int(50 + (1 - ratio) * 45)  # 50-95 range
+                        else:
+                            # Worse than average
+                            ratio = min(net_footprint / industry_average, 2.0)
+                            industry_percentile = max(5, int(50 - (ratio - 1) * 45))  # 5-50 range
+                    else:
+                        industry_percentile = 50  # Default if no benchmark data
+                else:
+                    # If no benchmark, calculate based on carbon score
+                    industry_percentile = max(5, min(95, int(carbon_score * 0.9)))
+                    
+            except Exception as e:
+                print(f"Error calculating industry percentile: {e}")
+                industry_percentile = max(5, min(95, int(carbon_score * 0.9)))
+            
+            # Get sustainability badges for this establishment/production
+            badges = []
+            try:
+                establishment_badges = SustainabilityBadge.objects.filter(establishments=establishment)
+                for badge in establishment_badges:
+                    badges.append({
+                        'id': str(badge.id),
+                        'name': badge.name,
+                        'description': badge.description,
+                        'icon': badge.icon or 'leaf'
+                    })
+            except Exception:
+                pass
+            
+            # Generate relatable footprint
+            relatable_footprint = "Carbon neutral"
+            if net_footprint > 0:
+                miles_equivalent = net_footprint / 0.12  # 0.12 kg CO2 per mile
+                relatable_footprint = f"Like driving {miles_equivalent:.1f} miles"
+            elif net_footprint < 0:
+                trees_equivalent = abs(net_footprint) / 22  # 22 kg CO2 per tree per year
+                relatable_footprint = f"Like planting {trees_equivalent:.1f} trees"
+            
+            # Get recommendations
+            recommendations = []
+            if carbon_score < 70:
+                recommendations.extend([
+                    "Consider implementing drip irrigation to reduce water usage",
+                    "Switch to organic fertilizers to lower chemical emissions",
+                    "Use renewable energy sources for farm operations",
+                    "Implement cover cropping to increase carbon sequestration"
+                ])
+            elif carbon_score < 85:
+                recommendations.extend([
+                    "Optimize equipment usage to reduce fuel consumption",
+                    "Consider precision agriculture techniques",
+                    "Explore carbon offset opportunities"
+                ])
+            
+            # Get emissions breakdown by category
+            emissions_by_category = {}
+            try:
+                for entry in entries.filter(type='emission'):
+                    category = entry.source.category if entry.source else 'Other'
+                    emissions_by_category[category] = emissions_by_category.get(category, 0) + entry.co2e_amount
+            except Exception:
+                pass
+            
+            # Get offsets breakdown by action
+            offsets_by_action = {}
+            try:
+                for entry in entries.filter(type='offset'):
+                    action = entry.offset_action.name if entry.offset_action else 'Other'
+                    offsets_by_action[action] = offsets_by_action.get(action, 0) + entry.co2e_amount
+            except Exception:
+                pass
+            
+            # Build the response matching the frontend interface
+            response_data = {
+                'carbonScore': carbon_score,
+                'totalEmissions': float(total_emissions),
+                'totalOffsets': float(total_offsets),
+                'netFootprint': float(net_footprint),
+                'relatableFootprint': relatable_footprint,
+                'industryPercentile': industry_percentile,
+                'industryAverage': float(industry_average),
+                'isUsdaVerified': getattr(establishment, 'usda_verified', False),
+                'badges': badges,
+                'recommendations': recommendations,
+                'emissionsByCategory': emissions_by_category,
+                'offsetsByAction': offsets_by_action,
+                'socialProof': {
+                    'totalScans': 1000,  # Could be calculated from actual scan data
+                    'totalOffsets': float(total_offsets),
+                    'totalUsers': 500,
+                    'averageRating': 4.5
+                }
+            }
+            
+            return Response(response_data, status=status.HTTP_200_OK)
+            
+        except History.DoesNotExist:
+            return Response({
+                'error': 'Production not found or not published'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            print(f"Error in qr_summary: {e}")
+            return Response({
+                'error': 'Internal server error',
+                'carbonScore': 50,
+                'totalEmissions': 0.0,
+                'totalOffsets': 0.0,
+                'netFootprint': 0.0,
+                'relatableFootprint': 'Data being calculated',
+                'industryPercentile': 50,
+                'industryAverage': 0.0,
+                'isUsdaVerified': False,
+                'badges': [],
+                'recommendations': ['Data will be available soon'],
+                'emissionsByCategory': {},
+                'offsetsByAction': {},
+                'socialProof': {
+                    'totalScans': 0,
+                    'totalOffsets': 0.0,
+                    'totalUsers': 0,
+                    'averageRating': 0.0
+                }
+            }, status=status.HTTP_200_OK)
 
 
 class CarbonOffsetViewSet(viewsets.ViewSet):

@@ -43,6 +43,17 @@ class EstablishmentSerializer(ModelSerializer):
             "location_highlights",
             "custom_message",
             "images",
+            "email",
+            "phone",
+            "zip_code",
+            "is_active",
+            "crops_grown",
+            "sustainability_practices",
+            "employee_count",
+            "total_acreage",
+            "year_established",
+            "establishment_type",
+            "farming_method",
         )
 
     def get_parcels(self, establishment):
@@ -130,6 +141,17 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "location_highlights",
             "custom_message",
             "address",
+            "email",
+            "phone",
+            "zip_code",
+            "is_active",
+            "crops_grown",
+            "sustainability_practices",
+            "employee_count",
+            "total_acreage",
+            "year_established",
+            "establishment_type",
+            "farming_method",
         )
 
     def to_representation(self, instance):

@@ -1,6 +1,6 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
-from .models import WeatherEvent, ChemicalEvent, ProductionEvent, GeneralEvent, EquipmentEvent, SoilManagementEvent, BusinessEvent, PestManagementEvent
+from .models import WeatherEvent, ChemicalEvent, ProductionEvent, GeneralEvent, EquipmentEvent, SoilManagementEvent, PestManagementEvent
 from carbon.services.event_carbon_calculator import EventCarbonCalculator
 
 
@@ -214,35 +214,6 @@ def calculate_soil_management_event_carbon(sender, instance, created, **kwargs):
             
         except Exception as e:
             print(f"❌ Error calculating carbon for Soil Management Event {instance.id}: {e}")
-
-
-@receiver(post_save, sender=BusinessEvent)
-def calculate_business_event_carbon(sender, instance, created, **kwargs):
-    """
-    Automatically calculate carbon impact for business events
-    """
-    if created:  # Only for new business events
-        try:
-            from carbon.services.event_carbon_calculator import EventCarbonCalculator
-            
-            calculator = EventCarbonCalculator()
-            calculation_result = calculator.calculate_business_event_impact(instance)
-            
-            # Create carbon entry automatically (only if there's significant impact)
-            if abs(calculation_result['co2e']) > 0.1:
-                carbon_entry = calculator.create_carbon_entry_from_event(instance, calculation_result)
-            
-            # Store calculation result in event extra_data
-            if not hasattr(instance, 'extra_data') or instance.extra_data is None:
-                instance.extra_data = {}
-            
-            instance.extra_data['carbon_calculation'] = calculation_result
-            BusinessEvent.objects.filter(id=instance.id).update(extra_data=instance.extra_data)
-            
-            print(f"✅ Carbon calculation completed for Business Event {instance.id}: {calculation_result['co2e']} kg CO2e")
-            
-        except Exception as e:
-            print(f"❌ Error calculating carbon for Business Event {instance.id}: {e}")
 
 
 @receiver(post_save, sender=PestManagementEvent)

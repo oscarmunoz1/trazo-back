@@ -188,6 +188,19 @@ class Establishment(models.Model):
     location_highlights = models.TextField(blank=True, null=True)
     custom_message = models.TextField(blank=True, null=True)
 
+    # New valuable fields
+    email = models.EmailField(max_length=254, blank=True, null=True, help_text="Main establishment email")
+    phone = models.CharField(max_length=30, blank=True, null=True, help_text="Main establishment phone")
+    zip_code = models.CharField(max_length=20, blank=True, null=True, help_text="Postal/ZIP code")
+    is_active = models.BooleanField(default=True, help_text="Whether the establishment is active")
+    crops_grown = models.JSONField(default=list, blank=True, help_text="List of crops grown at this establishment")
+    sustainability_practices = models.JSONField(default=list, blank=True, help_text="List of sustainability practices")
+    employee_count = models.PositiveIntegerField(blank=True, null=True, help_text="Number of employees")
+    total_acreage = models.FloatField(blank=True, null=True, help_text="Total land area in acres")
+    year_established = models.PositiveIntegerField(blank=True, null=True, help_text="Year the establishment was founded")
+    establishment_type = models.CharField(max_length=50, blank=True, null=True, help_text="Type of agricultural operation")
+    farming_method = models.CharField(max_length=50, blank=True, null=True, help_text="Primary farming approach")
+
     class Meta:
         verbose_name = _("Establishment")
         verbose_name_plural = _("Establishments")

@@ -136,11 +136,8 @@ class History(models.Model):
 
     @property
     def certificate_percentage(self):
-        events = self.history_weatherevent_events.all()
-        if events.count() == 0:
-            return 0
-        certified_events = events.filter(certified=True).count()
-        return int(certified_events / events.count() * 100)
+        # Certificate percentage calculation removed as part of simplification
+        return 0
 
     def finish(self, history_data, images):
         if images is not None:
@@ -190,7 +187,6 @@ class CommonEvent(models.Model):
     album = models.ForeignKey(
         "common.Gallery", on_delete=models.CASCADE, blank=True, null=True
     )
-    certified = models.BooleanField(default=False)
     history = models.ForeignKey(
         History,
         on_delete=models.CASCADE,
@@ -379,44 +375,6 @@ class SoilManagementEvent(CommonEvent):
     class Meta:
         verbose_name = "Soil Management Event"
         verbose_name_plural = "Soil Management Events"
-
-
-class BusinessEvent(CommonEvent):
-    """Events related to business operations, sales, certifications, and compliance"""
-    
-    # Business event types
-    HARVEST_SALE = "HS"
-    CERTIFICATION = "CE"
-    INSPECTION = "IN"
-    INSURANCE = "IS"
-    MARKET_ANALYSIS = "MA"
-    CONTRACT = "CT"
-    COMPLIANCE = "CM"
-    
-    BUSINESS_TYPE_CHOICES = [
-        (HARVEST_SALE, "Harvest Sale"),
-        (CERTIFICATION, "Certification"),
-        (INSPECTION, "Inspection"),
-        (INSURANCE, "Insurance"),
-        (MARKET_ANALYSIS, "Market Analysis"),
-        (CONTRACT, "Contract"),
-        (COMPLIANCE, "Compliance"),
-    ]
-    
-    type = models.CharField(
-        max_length=2, choices=BUSINESS_TYPE_CHOICES, default=HARVEST_SALE
-    )
-    revenue_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    quantity_sold = models.CharField(max_length=100, blank=True)
-    buyer_name = models.CharField(max_length=200, blank=True)
-    certification_type = models.CharField(max_length=100, blank=True)  # Organic, Carbon Credit, etc.
-    inspector_name = models.CharField(max_length=200, blank=True)
-    compliance_status = models.CharField(max_length=50, blank=True)
-    carbon_credits_earned = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
-    
-    class Meta:
-        verbose_name = "Business Event"
-        verbose_name_plural = "Business Events"
 
 
 class PestManagementEvent(CommonEvent):

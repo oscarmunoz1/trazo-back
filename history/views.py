@@ -9,13 +9,12 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action, permission_classes
 from .models import (
     History,
-    ProductionEvent,
     WeatherEvent,
     ChemicalEvent,
+    ProductionEvent,
     GeneralEvent,
     EquipmentEvent,
     SoilManagementEvent,
-    BusinessEvent,
     PestManagementEvent,
     HistoryScan,
 )
@@ -28,7 +27,6 @@ from .serializers import (
     GeneralEventSerializer,
     EquipmentEventSerializer,
     SoilManagementEventSerializer,
-    BusinessEventSerializer,
     PestManagementEventSerializer,
     PublicHistorySerializer,
     ListHistoryClassSerializer,
@@ -38,7 +36,6 @@ from .serializers import (
     UpdateGeneralEventSerializer,
     UpdateEquipmentEventSerializer,
     UpdateSoilManagementEventSerializer,
-    UpdateBusinessEventSerializer,
     UpdatePestManagementEventSerializer,
 )
 from .constants import (
@@ -48,9 +45,8 @@ from .constants import (
     GENERAL_EVENT_TYPE,
     EQUIPMENT_EVENT_TYPE,
     SOIL_MANAGEMENT_EVENT_TYPE,
-    BUSINESS_EVENT_TYPE,
     PEST_MANAGEMENT_EVENT_TYPE,
-    event_map,
+    EVENT_TYPE_TO_MODEL,
     ALLOWED_PERIODS,
 )
 
@@ -303,8 +299,6 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
             return UpdateEquipmentEventSerializer if is_mutation else EquipmentEventSerializer
         elif event_type == SOIL_MANAGEMENT_EVENT_TYPE:
             return UpdateSoilManagementEventSerializer if is_mutation else SoilManagementEventSerializer
-        elif event_type == BUSINESS_EVENT_TYPE:
-            return UpdateBusinessEventSerializer if is_mutation else BusinessEventSerializer
         elif event_type == PEST_MANAGEMENT_EVENT_TYPE:
             return UpdatePestManagementEventSerializer if is_mutation else PestManagementEventSerializer
         else:  # GENERAL_EVENT_TYPE
@@ -325,7 +319,7 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
         if event_type is not None:
             event_type = int(event_type)
             
-        event_model = event_map.get(event_type)
+        event_model = EVENT_TYPE_TO_MODEL.get(event_type)
         if event_model:
             queryset = event_model.objects.all()
         else:
@@ -353,7 +347,7 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
         if event_type is not None:
             try:
                 event_type = int(event_type)
-                event_model = event_map.get(event_type)
+                event_model = EVENT_TYPE_TO_MODEL.get(event_type)
                 
                 if event_model:
                     queryset = event_model.objects.all()
@@ -382,7 +376,7 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
             # Try to find the event across all event types
             
             # Apply company/establishment filtering to each model
-            for event_type_id, event_model in event_map.items():
+            for event_type_id, event_model in EVENT_TYPE_TO_MODEL.items():
                 try:
                     queryset = event_model.objects.all()
                     
@@ -431,8 +425,6 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
                 serializer_class = EquipmentEventSerializer
             elif event_type == SOIL_MANAGEMENT_EVENT_TYPE:
                 serializer_class = SoilManagementEventSerializer
-            elif event_type == BUSINESS_EVENT_TYPE:
-                serializer_class = BusinessEventSerializer
             elif event_type == PEST_MANAGEMENT_EVENT_TYPE:
                 serializer_class = PestManagementEventSerializer
             else:  # GENERAL_EVENT_TYPE
@@ -466,7 +458,7 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
                     + history.history_productionevent_events.count()
                 ) + 1
 
-                event_model = event_map.get(int(event_type), GeneralEvent)
+                event_model = EVENT_TYPE_TO_MODEL.get(int(event_type), GeneralEvent)
                 event = event_model.objects.create(
                     history=history,
                     index=index,
@@ -484,7 +476,7 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
         
         # Determine the current event type based on the model
         current_event_type = None
-        for event_type_id, event_model in event_map.items():
+        for event_type_id, event_model in EVENT_TYPE_TO_MODEL.items():
             if isinstance(instance, event_model):
                 current_event_type = event_type_id
                 break

@@ -1,7 +1,7 @@
 from django.urls import path, include, re_path
 
 from rest_framework_nested import routers
-from .views import CompanyViewSet, EstablishmentViewSet
+from .views import CompanyViewSet, EstablishmentViewSet, PublicEstablishmentViewSet
 from history.views import HistoryViewSet, HistoryScanViewSet, EventViewSet
 from product.views import ParcelViewSet, ProductsViewSet
 from reviews.views import ReviewsViewSet
@@ -10,6 +10,9 @@ from reviews.views import ReviewsViewSet
 router = routers.DefaultRouter()
 
 router.register(r"companies", CompanyViewSet, basename="companies")
+
+# Public routes (no authentication required)
+router.register(r"companies/public/establishments", PublicEstablishmentViewSet, basename="public-establishments")
 
 # Company routes
 company_router = routers.NestedDefaultRouter(router, r"companies", lookup="company")

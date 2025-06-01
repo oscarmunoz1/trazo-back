@@ -16,7 +16,6 @@ class CarbonSource(models.Model):
     category = models.CharField(max_length=50, help_text='e.g., Fuel, Offset')
     default_emission_factor = models.FloatField(help_text='kg CO2e per unit, USDA-aligned', default=0.0)
     usda_verified = models.BooleanField(default=False, help_text='Whether this source is verified by USDA')
-    cost_per_unit = models.FloatField(default=0.0, help_text='Cost per unit for ROI calculations')
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -35,7 +34,6 @@ class CarbonOffsetAction(models.Model):
     unit = models.CharField(max_length=50, help_text="e.g. trees planted, tons CO2 offset")
     verification_required = models.BooleanField(default=False)
     verification_process = models.TextField(blank=True)
-    cost_per_unit = models.FloatField(default=0.0, help_text='Cost per unit for ROI calculations')
     usda_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -58,7 +56,6 @@ class CarbonEntry(models.Model):
     year = models.IntegerField()
     timestamp = models.DateTimeField(default=timezone.now)
     description = models.TextField(blank=True)
-    cost = models.FloatField(default=0.0, help_text='Associated cost for ROI calculations')
     iot_device_id = models.CharField(max_length=100, blank=True, help_text='ID of IoT device if automated entry')
     usda_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now=True)
@@ -212,8 +209,6 @@ class CarbonReport(models.Model):
     )
     generated_at = models.DateTimeField(default=timezone.now)
     usda_verified = models.BooleanField(default=False)
-    cost_savings = models.FloatField(default=0.0, help_text='Cost savings achieved')
-    recommendations = models.JSONField(default=list, help_text='List of cost-saving recommendations')
     document = models.FileField(upload_to='carbon_reports/', null=True, blank=True, help_text='Report document file')
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -227,8 +222,7 @@ class CarbonReport(models.Model):
         ]
         indexes = [
             models.Index(fields=['usda_verified']),
-            models.Index(fields=['carbon_score']),
-            models.Index(fields=['cost_savings'])
+            models.Index(fields=['carbon_score'])
         ]
 
     def __str__(self):

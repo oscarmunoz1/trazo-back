@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, CostOptimizationViewSet, AutomationRuleViewSet
+from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, AutomationRuleViewSet
 
 router = DefaultRouter()
 router.register(r'sources', views.CarbonSourceViewSet)
@@ -23,8 +23,6 @@ router.register(r'productions', CarbonProductionSummaryViewSet, basename='carbon
 router.register(r'public/productions', PublicProductionViewSet, basename='public-production')
 router.register(r'offsets', CarbonOffsetViewSet, basename='carbon-offset')
 router.register(r'productions-flat', CarbonProductionViewSet, basename='carbon-production-flat')
-# ROI and Cost Optimization ViewSet
-router.register(r'roi', CostOptimizationViewSet, basename='roi')
 router.register(r'iot-devices', views.IoTDeviceViewSet, basename='iot-devices')
 router.register(r'automation-rules', AutomationRuleViewSet, basename='automation-rules')
 

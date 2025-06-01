@@ -14,6 +14,7 @@ from .serializers import (
     RetrieveEstablishmentSerializer,
     EstablishmentChartSerializer,
     EstablishmentProductsReputationSerializer,
+    EstablishmentSerializer,
 )
 from .models import Company, Establishment
 from .constants import ALLOWED_PERIODS
@@ -481,3 +482,49 @@ class EstablishmentViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context["request"] = self.request
         return context
+
+
+class PublicEstablishmentViewSet(viewsets.ViewSet):
+    """
+    Public endpoint for consumer-facing establishment views.
+    No authentication required.
+    """
+    permission_classes = []
+
+    def retrieve(self, request, pk=None):
+        """Get public establishment data by ID"""
+        try:
+            # Only show active establishments
+            establishment = get_object_or_404(
+                Establishment.objects.select_related('company'), 
+                pk=pk, 
+                is_active=True
+            )
+            
+            # Use EstablishmentSerializer but filter sensitive data
+            serializer = EstablishmentSerializer(establishment, context={'request': request})
+            data = serializer.data
+            
+            # Remove sensitive fields for public view
+            public_fields = [
+                'id', 'name', 'description', 'address', 'city', 'state', 'country',
+                'location', 'latitude', 'longitude', 'facebook', 'instagram',
+                'certifications', 'about', 'main_activities', 'location_highlights',
+                'custom_message', 'images', 'email', 'phone', 'zip_code',
+                'crops_grown', 'sustainability_practices', 'employee_count',
+                'total_acreage', 'year_established', 'establishment_type',
+                'farming_method', 'image'
+            ]
+            
+            public_data = {key: data[key] for key in public_fields if key in data}
+            
+            return Response(public_data, status=status.HTTP_200_OK)
+            
+        except Establishment.DoesNotExist:
+            return Response({
+                'error': 'Establishment not found or not available publicly'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': f'An error occurred: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
