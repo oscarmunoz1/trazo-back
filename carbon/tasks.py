@@ -9,16 +9,20 @@ This module contains background tasks for:
 """
 
 from celery import shared_task
-from django.db.models import Sum, Avg
-from .models import CarbonEntry, CarbonReport, CarbonBenchmark, SustainabilityBadge, CarbonAuditLog, IoTDevice, IoTDataPoint, Establishment
+from django.db.models import Sum, Avg, Count
+from .models import CarbonEntry, CarbonReport, CarbonBenchmark, SustainabilityBadge, CarbonAuditLog, IoTDevice, IoTDataPoint, Establishment, Production
 from django.utils import timezone
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django.contrib.auth import get_user_model
 from django.conf import settings
 import logging
 from .services.weather_api import WeatherService, get_weather_service
 from .services.john_deere_api import get_john_deere_api
-from company.models import Establishment
+from company.models import Establishment, Company
+from product.models import Product
+from .services.blockchain import BlockchainService
+import hashlib
+import json
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -98,7 +102,7 @@ def award_sustainability_badges():
     ).distinct()
     
     # Also get all productions with carbon entries
-    productions = History.objects.filter(
+    productions = Production.objects.filter(
         carbonentry__isnull=False
     ).distinct()
     
@@ -652,4 +656,235 @@ def cleanup_old_iot_data():
             'status': 'error',
             'error': str(e),
             'timestamp': timezone.now().isoformat()
-        } 
+        }
+
+@shared_task(bind=True)
+def batch_submit_monthly_summaries(self):
+    """
+    Celery task to submit monthly carbon summaries to blockchain.
+    Runs on 1st of each month at 2:00 AM UTC.
+    Only processes companies with active blockchain subscriptions.
+    """
+    try:
+        blockchain_service = BlockchainService()
+        
+        # Get last month's date range
+        today = timezone.now().date()
+        first_day_current_month = today.replace(day=1)
+        last_day_previous_month = first_day_current_month - timedelta(days=1)
+        first_day_previous_month = last_day_previous_month.replace(day=1)
+        
+        logger.info(f"Processing monthly summaries for period: {first_day_previous_month} to {last_day_previous_month}")
+        
+        # Get companies with active blockchain subscriptions
+        companies_with_blockchain = Company.objects.filter(
+            blockchain_subscription_status=True
+        )
+        
+        total_summaries = 0
+        successful_summaries = 0
+        failed_summaries = 0
+        
+        for company in companies_with_blockchain:
+            logger.info(f"Processing company: {company.name} (ID: {company.id})")
+            
+            # Get all productions for this company in the previous month
+            productions = Production.objects.filter(
+                parcel__establishment__company=company,
+                created_at__date__gte=first_day_previous_month,
+                created_at__date__lte=last_day_previous_month
+            )
+            
+            for production in productions:
+                try:
+                    # Get carbon entries for this production in the previous month
+                    carbon_entries = CarbonEntry.objects.filter(
+                        production=production,
+                        timestamp__date__gte=first_day_previous_month,
+                        timestamp__date__lte=last_day_previous_month
+                    )
+                    
+                    if not carbon_entries.exists():
+                        logger.info(f"No carbon entries for production {production.id}, skipping")
+                        continue
+                    
+                    # Calculate monthly summary
+                    summary_data = carbon_entries.aggregate(
+                        total_co2e=Sum('co2e_amount'),
+                        entry_count=Count('id')
+                    )
+                    
+                    total_co2e = summary_data['total_co2e'] or 0
+                    entry_count = summary_data['entry_count'] or 0
+                    
+                    # Collect IoT data
+                    iot_data = collect_iot_data(production.id)
+                    
+                    # Create hash of raw data for integrity
+                    raw_data = {
+                        'production_id': production.id,
+                        'company_id': company.id,
+                        'period_start': first_day_previous_month.isoformat(),
+                        'period_end': last_day_previous_month.isoformat(),
+                        'total_co2e': float(total_co2e),
+                        'entry_count': entry_count,
+                        'entries': list(carbon_entries.values('id', 'co2e_amount', 'activity_type', 'timestamp')),
+                        'iot_data': iot_data
+                    }
+                    
+                    data_hash = hashlib.sha256(
+                        json.dumps(raw_data, sort_keys=True, default=str).encode()
+                    ).hexdigest()
+                    
+                    # Submit to blockchain
+                    logger.info(f"Submitting monthly summary for production {production.id}")
+                    
+                    blockchain_result = blockchain_service.submit_monthly_summary(
+                        producer_id=company.id,
+                        production_id=production.id,
+                        total_co2e=total_co2e,
+                        data_hash=data_hash,
+                        raw_data=raw_data
+                    )
+                    
+                    if blockchain_result and blockchain_result.get('success'):
+                        successful_summaries += 1
+                        logger.info(f"Successfully submitted summary for production {production.id}")
+                        logger.info(f"Transaction hash: {blockchain_result.get('transaction_hash')}")
+                    else:
+                        failed_summaries += 1
+                        logger.error(f"Failed to submit summary for production {production.id}: {blockchain_result}")
+                        
+                    total_summaries += 1
+                    
+                except Exception as e:
+                    failed_summaries += 1
+                    logger.error(f"Error processing production {production.id}: {str(e)}")
+                    continue
+        
+        logger.info(f"Monthly summary batch complete: {successful_summaries}/{total_summaries} successful")
+        
+        return {
+            'status': 'completed',
+            'total_summaries': total_summaries,
+            'successful_summaries': successful_summaries,
+            'failed_summaries': failed_summaries,
+            'processed_period': f"{first_day_previous_month} to {last_day_previous_month}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in batch_submit_monthly_summaries: {str(e)}")
+        raise self.retry(countdown=60, max_retries=3)
+
+@shared_task
+def collect_iot_data(production_id):
+    """
+    Collect IoT data for a production (soil sensors, satellite imagery, etc.)
+    This is a placeholder for future IoT integration.
+    """
+    try:
+        # Placeholder IoT data collection
+        # In a real implementation, this would connect to:
+        # - Soil moisture sensors
+        # - Satellite imagery APIs
+        # - Weather stations
+        # - Farm equipment telemetry
+        
+        iot_data = {
+            'soil_moisture': {
+                'average': 65.5,  # percentage
+                'readings_count': 30,
+                'last_reading': timezone.now().isoformat()
+            },
+            'weather': {
+                'avg_temperature': 22.5,  # celsius
+                'total_rainfall': 45.2,   # mm
+                'avg_humidity': 58.3      # percentage
+            },
+            'satellite_imagery': {
+                'ndvi_score': 0.75,  # Normalized Difference Vegetation Index
+                'cloud_coverage': 15,  # percentage
+                'image_date': timezone.now().isoformat()
+            },
+            'equipment_usage': {
+                'tractor_hours': 12.5,
+                'irrigation_hours': 48.0,
+                'fuel_consumption': 85.3  # liters
+            }
+        }
+        
+        logger.info(f"Collected IoT data for production {production_id}")
+        return iot_data
+        
+    except Exception as e:
+        logger.error(f"Error collecting IoT data for production {production_id}: {str(e)}")
+        return {}
+
+@shared_task
+def verify_blockchain_compliance(production_id):
+    """
+    Verify USDA compliance for a specific production on blockchain
+    """
+    try:
+        blockchain_service = BlockchainService()
+        
+        production = Production.objects.get(id=production_id)
+        company = production.parcel.establishment.company
+        
+        # Only process if company has blockchain subscription
+        if not company.blockchain_subscription_status:
+            logger.info(f"Company {company.name} does not have blockchain subscription, skipping verification")
+            return {'status': 'skipped', 'reason': 'no_blockchain_subscription'}
+        
+        # Verify compliance on blockchain
+        compliance_result = blockchain_service.verify_compliance(production_id)
+        
+        logger.info(f"Compliance verification for production {production_id}: {compliance_result}")
+        
+        return {
+            'status': 'completed',
+            'production_id': production_id,
+            'compliance_result': compliance_result
+        }
+        
+    except Production.DoesNotExist:
+        logger.error(f"Production {production_id} not found")
+        return {'status': 'error', 'message': 'Production not found'}
+    except Exception as e:
+        logger.error(f"Error verifying compliance for production {production_id}: {str(e)}")
+        return {'status': 'error', 'message': str(e)}
+
+@shared_task
+def issue_carbon_credits(production_id, credits_amount):
+    """
+    Issue carbon credits for verified production on blockchain
+    """
+    try:
+        blockchain_service = BlockchainService()
+        
+        production = Production.objects.get(id=production_id)
+        company = production.parcel.establishment.company
+        
+        # Only process if company has blockchain subscription
+        if not company.blockchain_subscription_status:
+            logger.info(f"Company {company.name} does not have blockchain subscription, skipping credit issuance")
+            return {'status': 'skipped', 'reason': 'no_blockchain_subscription'}
+        
+        # Issue credits on blockchain
+        credits_result = blockchain_service.issue_credits(production_id, credits_amount)
+        
+        logger.info(f"Credits issued for production {production_id}: {credits_result}")
+        
+        return {
+            'status': 'completed',
+            'production_id': production_id,
+            'credits_amount': credits_amount,
+            'credits_result': credits_result
+        }
+        
+    except Production.DoesNotExist:
+        logger.error(f"Production {production_id} not found")
+        return {'status': 'error', 'message': 'Production not found'}
+    except Exception as e:
+        logger.error(f"Error issuing credits for production {production_id}: {str(e)}")
+        return {'status': 'error', 'message': str(e)} 

@@ -366,6 +366,7 @@ class PublicHistorySerializer(serializers.ModelSerializer):
     history_scan = serializers.SerializerMethodField()
     similar_histories = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
+    qr_code = serializers.SerializerMethodField()
 
     class Meta:
         model = History
@@ -381,6 +382,7 @@ class PublicHistorySerializer(serializers.ModelSerializer):
             "company",
             "parcel",
             "history_scan",
+            "qr_code",
             "images",
             "similar_histories",
         ]
@@ -402,6 +404,12 @@ class PublicHistorySerializer(serializers.ModelSerializer):
 
     def get_history_scan(self, history):
         return self.context.get("history_scan", None)
+
+    def get_qr_code(self, history):
+        if history.qr_code:
+            request = self.context.get('request')
+            return request.build_absolute_uri(history.qr_code.url) if request else history.qr_code.url
+        return None
 
     def get_images(self, history):
         try:

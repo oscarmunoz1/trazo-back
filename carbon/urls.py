@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, AutomationRuleViewSet
+from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, AutomationRuleViewSet, BlockchainVerificationViewSet
 
 router = DefaultRouter()
 router.register(r'sources', views.CarbonSourceViewSet)
@@ -25,6 +25,7 @@ router.register(r'offsets', CarbonOffsetViewSet, basename='carbon-offset')
 router.register(r'productions-flat', CarbonProductionViewSet, basename='carbon-production-flat')
 router.register(r'iot-devices', views.IoTDeviceViewSet, basename='iot-devices')
 router.register(r'automation-rules', AutomationRuleViewSet, basename='automation-rules')
+router.register(r'blockchain', BlockchainVerificationViewSet, basename='blockchain-verification')
 
 urlpatterns = [
     path('', include(router.urls)),

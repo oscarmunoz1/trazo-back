@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 import os
 from dotenv import load_dotenv
 from decouple import config
+from celery.schedules import crontab
 from pathlib import Path
 from datetime import timedelta
 from celery.schedules import crontab
@@ -60,6 +61,8 @@ INSTALLED_APPS = [
     "common",
     "subscriptions",
     "carbon",
+    "support",
+    "education",
     # django-allauth apps
     "allauth",
     "allauth.account",
@@ -418,3 +421,21 @@ STRIPE_PUBLIC_KEY = config("STRIPE_PUBLIC_KEY", default="")
 STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
 FRONTEND_URL = config("FRONTEND_URL", default="http://app.localhost:3000")
+
+# Blockchain Configuration (Polygon Amoy Testnet)
+POLYGON_RPC_URL = config("POLYGON_RPC_URL", default="https://rpc-amoy.polygon.technology/")
+CARBON_CONTRACT_ADDRESS = config("CARBON_CONTRACT_ADDRESS", default="")
+BLOCKCHAIN_PRIVATE_KEY = config("BLOCKCHAIN_PRIVATE_KEY", default="")
+
+# Blockchain Feature Settings
+BLOCKCHAIN_ENABLED = config("BLOCKCHAIN_ENABLED", default=False, cast=bool)
+AUTO_VERIFY_CARBON_RECORDS = config("AUTO_VERIFY_CARBON_RECORDS", default=True, cast=bool)
+USDA_VERIFICATION_ENABLED = config("USDA_VERIFICATION_ENABLED", default=True, cast=bool)
+
+# Celery Beat Schedule for Blockchain Tasks
+CELERY_BEAT_SCHEDULE = {
+    'batch-submit-monthly-summaries': {
+        'task': 'carbon.tasks.batch_submit_monthly_summaries',
+        'schedule': crontab(hour=2, minute=0, day_of_month=1),  # 2:00 AM UTC on 1st of each month
+    },
+}

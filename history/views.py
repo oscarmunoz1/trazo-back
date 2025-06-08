@@ -1,14 +1,38 @@
-from datetime import datetime, timedelta
-
-from django.shortcuts import render
-from django.contrib.gis.geoip2 import GeoIP2
+from django.core.exceptions import ObjectDoesNotExist
+from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.db.models import Avg, Q
+from django.utils import timezone
+from django.utils.timezone import make_aware
+
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action, permission_classes
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+
+from company.models import Company
+from product.models import Product, Parcel
+
+from common.models import Gallery
+from backend.permissions import CompanyNestedViewSet
+
+from .models import CommonEvent, History, HistoryScan
+from .serializers import (
+    EventSerializer,
+    HistorySerializer,
+    ListHistoryClassSerializer,
+    PublicHistorySerializer,
+)
+
+import hashlib
+from datetime import datetime, timedelta
+from dateutil import parser as date_parser
+
 from rest_framework import viewsets, filters, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.decorators import action, permission_classes
 from .models import (
-    History,
     WeatherEvent,
     ChemicalEvent,
     ProductionEvent,
@@ -50,8 +74,6 @@ from .constants import (
     ALLOWED_PERIODS,
 )
 
-from product.models import Parcel, Product
-from backend.permissions import CompanyNestedViewSet
 from django.db.models import Q
 
 
@@ -114,7 +136,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
             "is_outdoor": is_outdoor,
         }
         history = History.objects.create(
-            start_date=data["date"],
+            start_date=data["start_date"],
             parcel=parcel,
             product=obj,
             extra_data=extra_data,
@@ -124,6 +146,181 @@ class HistoryViewSet(viewsets.ModelViewSet):
         parcel.save()
         serializer = HistorySerializer(history)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['post'], url_path='start-production', permission_classes=[IsAuthenticated])
+    def start_production(self, request):
+        """
+        Enhanced production creation endpoint with crop selection and blockchain integration.
+        Supports Step 7 implementation from TRAZO_FOCUSED_IMPLEMENTATION_PLAN_FINAL.md
+        """
+        try:
+            data = request.data
+            
+            # Validate required fields
+            required_fields = ['name', 'parcel_id', 'crop_type', 'start_date']
+            for field in required_fields:
+                if field not in data:
+                    return Response(
+                        {'error': f'Missing required field: {field}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Get parcel and validate ownership
+            try:
+                parcel = Parcel.objects.get(id=data['parcel_id'])
+                # Add permission check here if needed
+                # if not user has access to this parcel...
+            except Parcel.DoesNotExist:
+                return Response(
+                    {'error': 'Parcel not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Create or get product based on crop type
+            crop_type = data['crop_type']
+            product, created = Product.objects.get_or_create(name=crop_type)
+            
+            # Parse dates with timezone awareness
+            start_date_str = data['start_date'].replace('Z', '+00:00')
+            start_date = datetime.fromisoformat(start_date_str)
+            if start_date.tzinfo is None:
+                start_date = timezone.make_aware(start_date)
+            
+            expected_harvest = None
+            if data.get('expected_harvest'):
+                expected_harvest_str = data['expected_harvest'].replace('Z', '+00:00')
+                expected_harvest = datetime.fromisoformat(expected_harvest_str)
+                if expected_harvest.tzinfo is None:
+                    expected_harvest = timezone.make_aware(expected_harvest)
+            
+            # Create production with enhanced data
+            extra_data = {
+                'crop_category': self._categorize_crop(crop_type),
+                'production_method': data.get('production_method', 'conventional'),
+                'estimated_yield': data.get('estimated_yield'),
+                'irrigation_method': data.get('irrigation_method'),
+                'created_via': 'production_start_form',
+                'blockchain_enabled': True,  # Enable blockchain for new productions
+            }
+            
+            # Add optional fields to extra_data
+            optional_fields = ['age_of_plants', 'number_of_plants', 'soil_ph', 'is_outdoor', 'notes']
+            for field in optional_fields:
+                if data.get(field):
+                    extra_data[field] = data[field]
+            
+            history = History.objects.create(
+                name=data['name'],
+                start_date=start_date,
+                finish_date=expected_harvest,
+                parcel=parcel,
+                product=product,
+                extra_data=extra_data,
+                type=data.get('type', 'OR'),  # Default to Orchard
+                description=data.get('description', ''),
+                operator=request.user if request.user.is_authenticated else None
+            )
+            
+            # Update parcel's current history
+            parcel.current_history = history
+            parcel.save()
+            
+            # Create initial blockchain record for this production
+            try:
+                from carbon.services.blockchain import blockchain_service
+                
+                initial_carbon_data = {
+                    'production_id': history.id,
+                    'total_emissions': 0.0,
+                    'total_offsets': 0.0,
+                    'crop_type': crop_type,
+                    'calculation_method': 'initial_production_setup',
+                    'usda_verified': False,
+                    'timestamp': int(start_date.timestamp()),
+                    'carbon_score': 50,  # Initial neutral score
+                    'industry_percentile': 50
+                }
+                
+                blockchain_result = blockchain_service.create_carbon_record(history.id, initial_carbon_data)
+                
+                # Store blockchain reference in extra_data
+                history.extra_data['blockchain_transaction'] = blockchain_result.get('transaction_hash')
+                history.extra_data['blockchain_verified'] = blockchain_result.get('blockchain_verified', False)
+                history.save()
+                
+            except Exception as e:
+                print(f"Error creating initial blockchain record: {e}")
+                # Continue without blockchain - not critical for production creation
+            
+            # Serialize and return the created production
+            serializer = HistorySerializer(history)
+            response_data = serializer.data
+            
+            # Add additional metadata for the frontend
+            response_data.update({
+                'crop_category': extra_data.get('crop_category'),
+                'blockchain_enabled': extra_data.get('blockchain_enabled', False),
+                'blockchain_transaction': extra_data.get('blockchain_transaction'),
+                'qr_code_url': history.qr_code.url if history.qr_code else None,
+                'establishment': {
+                    'id': parcel.establishment.id,
+                    'name': parcel.establishment.name,
+                    'location': parcel.establishment.get_location()
+                },
+                'parcel': {
+                    'id': parcel.id,
+                    'name': parcel.name,
+                    'area': parcel.area
+                }
+            })
+            
+            return Response(response_data, status=status.HTTP_201_CREATED)
+            
+        except ValueError as e:
+            return Response(
+                {'error': f'Invalid date format: {str(e)}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            print(f"Error creating production: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response(
+                {'error': 'Failed to create production'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _categorize_crop(self, crop_name: str) -> str:
+        """Helper method to categorize crops for the production start form"""
+        crop_lower = crop_name.lower()
+        
+        fruit_keywords = ['orange', 'apple', 'grape', 'lemon', 'lime', 'strawberry', 'blueberry', 'avocado']
+        vegetable_keywords = ['tomato', 'lettuce', 'carrot', 'broccoli', 'spinach', 'cucumber', 'pepper', 'onion']
+        grain_keywords = ['corn', 'wheat', 'rice', 'barley', 'oats', 'soybean']
+        herb_keywords = ['basil', 'oregano', 'thyme', 'rosemary', 'mint']
+        legume_keywords = ['bean', 'chickpea', 'lentil', 'pea']
+        nut_keywords = ['almond', 'walnut', 'pecan', 'hazelnut']
+        
+        for keyword in fruit_keywords:
+            if keyword in crop_lower:
+                return 'fruits'
+        for keyword in vegetable_keywords:
+            if keyword in crop_lower:
+                return 'vegetables'
+        for keyword in grain_keywords:
+            if keyword in crop_lower:
+                return 'grains'
+        for keyword in herb_keywords:
+            if keyword in crop_lower:
+                return 'herbs'
+        for keyword in legume_keywords:
+            if keyword in crop_lower:
+                return 'legumes'
+        for keyword in nut_keywords:
+            if keyword in crop_lower:
+                return 'nuts'
+                
+        return 'other'
 
     @action(detail=True, methods=["get"], permission_classes=[AllowAny])
     def public_history(self, request, pk=None):
@@ -138,12 +335,19 @@ class HistoryViewSet(viewsets.ModelViewSet):
         city = None
         country = None
 
+        # Get city and country from IP using free API (no GDAL required)
         if ip_address:
             try:
-                g = GeoIP2()
-                city = g.city(ip_address).get("city")
-                country = g.country(ip_address).get("country_name")
+                import requests
+                # Using ipapi.co - free tier allows 1000 requests/day
+                response = requests.get(f'https://ipapi.co/{ip_address}/json/', timeout=2)
+                if response.status_code == 200:
+                    data = response.json()
+                    city = data.get('city')
+                    country = data.get('country_name')
             except Exception as e:
+                # If geolocation fails, continue without it
+                print(f"IP geolocation failed: {e}")
                 pass
 
         history_scan = HistoryScan.objects.create(

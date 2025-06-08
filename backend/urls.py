@@ -36,6 +36,8 @@ urlpatterns = [
     path("", include("common.urls")),
     path("", include("subscriptions.urls")),
     path('carbon/', include('carbon.urls')),
+    path('support/', include('support.urls')),
+    path('education/', include('education.urls')),
 ]
 
 if settings.DEBUG:

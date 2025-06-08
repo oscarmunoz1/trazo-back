@@ -31,15 +31,124 @@ class EventCarbonCalculator:
         'injection': 0.9,
     }
 
+    # Crop-specific emission factors (kg CO2e per kg of crop)
+    CROP_SPECIFIC_FACTORS = {
+        # Fruits
+        'orange': 0.5,
+        'apple': 0.4,
+        'grape': 0.6,
+        'lemon': 0.5,
+        'lime': 0.5,
+        'strawberry': 0.3,
+        'blueberry': 0.4,
+        'avocado': 1.2,
+        
+        # Vegetables
+        'tomato': 0.8,
+        'lettuce': 0.2,
+        'carrot': 0.15,
+        'broccoli': 0.4,
+        'spinach': 0.15,
+        'cucumber': 0.3,
+        'bell pepper': 0.7,
+        'onion': 0.2,
+        
+        # Grains
+        'corn': 0.6,
+        'wheat': 0.5,
+        'rice': 2.5,  # Higher due to methane emissions
+        'barley': 0.4,
+        'oats': 0.4,
+        
+        # Herbs
+        'basil': 0.1,
+        'oregano': 0.1,
+        'thyme': 0.1,
+        'rosemary': 0.1,
+        'mint': 0.1,
+        
+        # Legumes
+        'soybean': 0.4,
+        'black bean': 0.3,
+        'chickpea': 0.3,
+        'lentil': 0.2,
+        'pea': 0.2,
+        
+        # Nuts
+        'almond': 2.1,  # High water and energy requirements
+        'walnut': 1.8,
+        'pecan': 1.9,
+        'hazelnut': 1.5,
+        
+        # Default fallback
+        'default': 1.0
+    }
+
+    # Crop-specific fertilizer efficiency factors
+    CROP_FERTILIZER_EFFICIENCY = {
+        'fruits': 0.85,      # Tree crops generally more efficient
+        'vegetables': 0.75,   # Annual crops less efficient
+        'grains': 0.70,      # Field crops
+        'herbs': 0.90,       # Small plants, precision application
+        'legumes': 0.60,     # Nitrogen fixers need less N fertilizer
+        'nuts': 0.80,        # Tree crops, established root systems
+        'default': 0.75
+    }
+
     def __init__(self):
         self.current_year = timezone.now().year
+
+    def _get_crop_category(self, crop_name: str) -> str:
+        """Determine crop category from crop name for efficiency calculations"""
+        crop_lower = crop_name.lower()
+        
+        fruit_keywords = ['orange', 'apple', 'grape', 'lemon', 'lime', 'strawberry', 'blueberry', 'avocado']
+        vegetable_keywords = ['tomato', 'lettuce', 'carrot', 'broccoli', 'spinach', 'cucumber', 'pepper', 'onion']
+        grain_keywords = ['corn', 'wheat', 'rice', 'barley', 'oats']
+        herb_keywords = ['basil', 'oregano', 'thyme', 'rosemary', 'mint']
+        legume_keywords = ['soybean', 'bean', 'chickpea', 'lentil', 'pea']
+        nut_keywords = ['almond', 'walnut', 'pecan', 'hazelnut']
+        
+        for keyword in fruit_keywords:
+            if keyword in crop_lower:
+                return 'fruits'
+        for keyword in vegetable_keywords:
+            if keyword in crop_lower:
+                return 'vegetables'
+        for keyword in grain_keywords:
+            if keyword in crop_lower:
+                return 'grains'
+        for keyword in herb_keywords:
+            if keyword in crop_lower:
+                return 'herbs'
+        for keyword in legume_keywords:
+            if keyword in crop_lower:
+                return 'legumes'
+        for keyword in nut_keywords:
+            if keyword in crop_lower:
+                return 'nuts'
+                
+        return 'default'
+
+    def _get_crop_specific_factor(self, crop_name: str) -> float:
+        """Get crop-specific emission factor"""
+        crop_key = crop_name.lower().replace(' ', '_')
+        return self.CROP_SPECIFIC_FACTORS.get(crop_key, self.CROP_SPECIFIC_FACTORS['default'])
 
     def calculate_chemical_event_impact(self, event) -> Dict[str, Any]:
         """
         Calculate carbon impact of chemical application events.
         Based on USDA fertilizer emission factors and application efficiency.
+        Enhanced with crop-specific factors.
         """
         try:
+            # Get crop information from the production
+            crop_name = "default"
+            crop_category = "default"
+            if hasattr(event, 'history') and event.history and hasattr(event.history, 'product'):
+                crop_name = event.history.product.name
+                crop_category = self._get_crop_category(crop_name)
+            
             # Parse nutrient content (NPK analysis)
             npk_content = self._parse_npk_content(event.concentration or "")
             
@@ -49,14 +158,19 @@ class EventCarbonCalculator:
             # Convert area to standardized units (hectares)
             area_hectares = self._convert_area_to_hectares(event.area or "0")
             
-            # Get application efficiency
-            efficiency = self.APPLICATION_EFFICIENCY.get(
+            # Get application efficiency (crop-specific if available)
+            base_efficiency = self.APPLICATION_EFFICIENCY.get(
                 self._normalize_application_method(event.way_of_application or ""), 
                 0.7  # Default efficiency
             )
             
+            # Apply crop-specific efficiency modifier
+            crop_efficiency_modifier = self.CROP_FERTILIZER_EFFICIENCY.get(crop_category, 0.75)
+            efficiency = base_efficiency * crop_efficiency_modifier
+            
             # Calculate base emissions from nutrients
             base_emissions = 0.0
+            n_emissions = p_emissions = k_emissions = 0.0
             
             if event.type == 'FE':  # Fertilizer
                 # Calculate emissions from N, P, K
@@ -64,32 +178,46 @@ class EventCarbonCalculator:
                 p_emissions = (npk_content['P'] / 100) * volume_liters * self.USDA_FERTILIZER_FACTORS['phosphorus']
                 k_emissions = (npk_content['K'] / 100) * volume_liters * self.USDA_FERTILIZER_FACTORS['potassium']
                 
+                # Apply crop-specific efficiency
                 base_emissions = (n_emissions + p_emissions + k_emissions) * efficiency
+                
+                # Add crop-specific production impact
+                crop_factor = self._get_crop_specific_factor(crop_name)
+                base_emissions += area_hectares * crop_factor * 0.1  # Small crop-specific adjustment
             
             elif event.type in ['PE', 'HE', 'FU']:  # Pesticides, Herbicides, Fungicides
                 # Use volume-based calculation with standard factors
                 base_emissions = volume_liters * 0.5 * efficiency  # Avg 0.5 kg CO2e per liter
+                
+                # Add crop-specific adjustment for pest pressure (some crops need more treatments)
+                crop_factor = self._get_crop_specific_factor(crop_name)
+                pesticide_modifier = 1.0 + (crop_factor * 0.2)  # Higher emission crops may need more treatments
+                base_emissions *= pesticide_modifier
             
             # Calculate cost estimate (for recommendations)
             estimated_cost = self._estimate_chemical_cost(event, volume_liters)
             
-            # Generate recommendations
+            # Generate crop-specific recommendations
             recommendations = self._generate_chemical_recommendations(
-                event, efficiency, base_emissions, estimated_cost
+                event, efficiency, base_emissions, estimated_cost, crop_name, crop_category
             )
             
             return {
                 'co2e': round(base_emissions, 3),
                 'efficiency_score': round(efficiency * 100, 1),
                 'usda_verified': True,
-                'calculation_method': 'USDA_fertilizer_factors',
+                'calculation_method': 'USDA_fertilizer_factors_crop_specific',
+                'crop_name': crop_name,
+                'crop_category': crop_category,
                 'breakdown': {
-                    'nitrogen_emissions': round(n_emissions if 'n_emissions' in locals() else 0, 3),
-                    'phosphorus_emissions': round(p_emissions if 'p_emissions' in locals() else 0, 3),
-                    'potassium_emissions': round(k_emissions if 'k_emissions' in locals() else 0, 3),
+                    'nitrogen_emissions': round(n_emissions, 3),
+                    'phosphorus_emissions': round(p_emissions, 3),
+                    'potassium_emissions': round(k_emissions, 3),
                     'application_efficiency': efficiency,
+                    'crop_efficiency_modifier': crop_efficiency_modifier,
                     'volume_liters': volume_liters,
                     'area_hectares': area_hectares,
+                    'crop_specific_factor': self._get_crop_specific_factor(crop_name),
                 },
                 'cost_analysis': {
                     'estimated_cost': estimated_cost,
@@ -111,10 +239,21 @@ class EventCarbonCalculator:
     def calculate_production_event_impact(self, event) -> Dict[str, Any]:
         """
         Calculate carbon impact of production events (irrigation, harvesting, etc.)
+        Enhanced with crop-specific factors.
         """
         try:
+            # Get crop information from the production
+            crop_name = "default"
+            crop_category = "default"
+            if hasattr(event, 'history') and event.history and hasattr(event.history, 'product'):
+                crop_name = event.history.product.name
+                crop_category = self._get_crop_category(crop_name)
+                
             base_emissions = 0.0
             fuel_used = 0.0
+            
+            # Get crop-specific factor for production adjustments
+            crop_factor = self._get_crop_specific_factor(crop_name)
             
             if event.type == 'IR':  # Irrigation
                 # Estimate based on water pumping energy
@@ -122,26 +261,48 @@ class EventCarbonCalculator:
                 water_volume = self._extract_numeric_value(event.observation or "", default=100)  # m³
                 base_emissions = water_volume * 0.5 * 0.4  # Energy for pumping
                 
+                # Crop-specific water needs adjustment
+                if crop_category == 'nuts':
+                    base_emissions *= 1.5  # Nuts typically need more water
+                elif crop_category == 'herbs':
+                    base_emissions *= 0.7  # Herbs typically need less water
+                elif crop_category == 'fruits' and 'avocado' in crop_name.lower():
+                    base_emissions *= 2.0  # Avocados are very water-intensive
+                
             elif event.type in ['HA', 'PL']:  # Harvesting, Planting
                 # Estimate equipment fuel consumption
                 area = self._extract_numeric_value(getattr(event.history, 'parcel.area', '1'), default=1)
                 fuel_used = area * 2.0  # Estimated 2L diesel per hectare
                 base_emissions = fuel_used * self.FUEL_EMISSION_FACTORS['diesel']
                 
+                # Crop-specific equipment intensity
+                if crop_category == 'grains':
+                    base_emissions *= 1.2  # Grain harvesting is more fuel-intensive
+                elif crop_category == 'herbs':
+                    base_emissions *= 0.6  # Herb harvesting is often manual
+                elif crop_category == 'nuts':
+                    base_emissions *= 1.4  # Nut harvesting requires heavy equipment
+                
             elif event.type == 'PR':  # Pruning
-                # Manual operation, minimal emissions
-                base_emissions = 0.1  # Minimal impact
+                # Manual operation, minimal emissions, but varies by crop
+                if crop_category in ['fruits', 'nuts']:
+                    base_emissions = 0.5  # Tree crops require more pruning
+                else:
+                    base_emissions = 0.1  # Minimal impact for other crops
             
-            recommendations = self._generate_production_recommendations(event, base_emissions)
+            recommendations = self._generate_production_recommendations(event, base_emissions, crop_name, crop_category)
             
             return {
                 'co2e': round(base_emissions, 3),
                 'efficiency_score': 75.0,  # Default for production events
                 'usda_verified': True,
-                'calculation_method': 'production_activity_factors',
+                'calculation_method': 'production_activity_factors_crop_specific',
+                'crop_name': crop_name,
+                'crop_category': crop_category,
                 'breakdown': {
                     'fuel_consumption': fuel_used,
                     'activity_type': event.type,
+                    'crop_specific_factor': crop_factor,
                 },
                 'recommendations': recommendations
             }
@@ -533,8 +694,8 @@ class EventCarbonCalculator:
         base_cost = cost_per_liter.get(event.type, 5.0) * volume_liters
         return round(base_cost, 2)
 
-    def _generate_chemical_recommendations(self, event, efficiency: float, emissions: float, cost: float) -> List[Dict[str, Any]]:
-        """Generate cost-saving and efficiency recommendations"""
+    def _generate_chemical_recommendations(self, event, efficiency: float, emissions: float, cost: float, crop_name: str = "default", crop_category: str = "default") -> List[Dict[str, Any]]:
+        """Generate cost-saving and efficiency recommendations with crop-specific advice"""
         recommendations = []
         
         if efficiency < 0.8:
@@ -554,30 +715,86 @@ class EventCarbonCalculator:
                 'potential_savings': round(cost * 0.15, 2),
                 'carbon_reduction': round(emissions * 0.25, 2)
             })
+            
+        # Crop-specific recommendations
+        if crop_category == 'legumes' and event.type == 'FE':
+            recommendations.append({
+                'type': 'crop_specific',
+                'title': 'Reduce Nitrogen for Legumes',
+                'description': f'{crop_name} can fix nitrogen naturally. Consider reducing N fertilizer by 30-50%.',
+                'potential_savings': round(cost * 0.4, 2),
+                'carbon_reduction': round(emissions * 0.4, 2)
+            })
+            
+        if crop_category == 'herbs' and event.type in ['PE', 'HE', 'FU']:
+            recommendations.append({
+                'type': 'crop_specific',
+                'title': 'Consider Organic Pest Control',
+                'description': f'{crop_name} responds well to companion planting and beneficial insects.',
+                'potential_savings': round(cost * 0.3, 2),
+                'carbon_reduction': round(emissions * 0.3, 2)
+            })
+            
+        if crop_category == 'nuts' and emissions > 30:
+            recommendations.append({
+                'type': 'crop_specific',
+                'title': 'Tree Crop Efficiency',
+                'description': f'{crop_name} trees benefit from precise nutrient timing. Consider soil testing.',
+                'potential_savings': round(cost * 0.2, 2),
+                'carbon_reduction': round(emissions * 0.2, 2)
+            })
         
         return recommendations
 
-    def _generate_production_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for production events"""
+    def _generate_production_recommendations(self, event, emissions: float, crop_name: str = "default", crop_category: str = "default") -> List[Dict[str, Any]]:
+        """Generate recommendations for production events with crop-specific advice"""
         recommendations = []
         
         if event.type == 'IR':  # Irrigation
             recommendations.append({
                 'type': 'water_efficiency',
-                'title': 'Install Soil Moisture Sensors',
-                'description': 'Reduce irrigation by 25% with precision water management',
-                'potential_savings': 200.0,
+                'title': 'Optimize Irrigation Timing',
+                'description': 'Early morning irrigation reduces evaporation losses by 20-30%',
+                'potential_savings': 50.0,
                 'carbon_reduction': round(emissions * 0.25, 2)
             })
+            
+            # Crop-specific irrigation recommendations
+            if crop_category == 'nuts':
+                recommendations.append({
+                    'type': 'crop_specific',
+                    'title': 'Deficit Irrigation for Nuts',
+                    'description': f'{crop_name} can tolerate controlled water stress, reducing water use by 15-25%.',
+                    'potential_savings': 100.0,
+                    'carbon_reduction': round(emissions * 0.2, 2)
+                })
+            elif crop_category == 'vegetables':
+                recommendations.append({
+                    'type': 'crop_specific',
+                    'title': 'Mulching for Vegetables',
+                    'description': f'{crop_name} benefits from mulching to retain soil moisture.',
+                    'potential_savings': 75.0,
+                    'carbon_reduction': round(emissions * 0.15, 2)
+                })
         
-        elif event.type in ['HA', 'PL']:  # Equipment operations
+        if event.type in ['HA', 'PL']:  # Harvesting, Planting
             recommendations.append({
-                'type': 'fuel_efficiency',
-                'title': 'Optimize Equipment Routes',
-                'description': 'GPS-guided operations can reduce fuel consumption by 15%',
-                'potential_savings': 150.0,
-                'carbon_reduction': round(emissions * 0.15, 2)
+                'type': 'equipment',
+                'title': 'Equipment Efficiency',
+                'description': 'Regular equipment maintenance can improve fuel efficiency by 10-15%',
+                'potential_savings': 200.0,
+                'carbon_reduction': round(emissions * 0.12, 2)
             })
+            
+            # Crop-specific equipment recommendations
+            if crop_category == 'grains':
+                recommendations.append({
+                    'type': 'crop_specific',
+                    'title': 'Combine Harvester Optimization',
+                    'description': f'{crop_name} harvesting can be optimized with proper combine settings.',
+                    'potential_savings': 150.0,
+                    'carbon_reduction': round(emissions * 0.1, 2)
+                })
         
         return recommendations
 

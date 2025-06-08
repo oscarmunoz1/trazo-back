@@ -22,6 +22,12 @@ class Company(models.Model):
     facebook = models.URLField(max_length=200, blank=True, null=True)
     instagram = models.URLField(max_length=200, blank=True, null=True)
     certifications = models.TextField(blank=True, null=True)
+    
+    # Blockchain subscription status
+    blockchain_subscription_status = models.BooleanField(
+        default=False, 
+        help_text="Whether company has active blockchain verification subscription"
+    )
 
     class Meta:
         verbose_name = _("Company")

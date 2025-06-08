@@ -13,5 +13,10 @@ router.register(r'checkout', views.CheckoutViewSet, basename='checkout')
 urlpatterns = [
     path('subscriptions/', include(router.urls)),
     path('subscriptions/webhook/', views.stripe_webhook, name='webhook'),
+    
+    # Blockchain subscription endpoints
+    path('billing/subscribe-blockchain/', views.BlockchainSubscriptionView.as_view(), name='subscribe-blockchain'),
+    path('billing/subscription-status/', views.BlockchainSubscriptionStatusView.as_view(), name='subscription-status'),
+    path('billing/webhook/', views.StripeWebhookView.as_view(), name='stripe-webhook-new'),
     # Ensures that dashboard endpoint is accessible at /subscriptions/subscriptions/dashboard/
 ]

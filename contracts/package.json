@@ -1,0 +1,43 @@
+{
+  "name": "trazo-blockchain-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for Trazo's blockchain-based carbon verification system",
+  "main": "hardhat.config.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:amoy": "hardhat run scripts/deploy.js --network polygon-amoy",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network polygon-mainnet",
+    "deploy:local": "hardhat run scripts/deploy.js --network hardhat",
+    "verify:amoy": "hardhat verify --network polygon-amoy",
+    "clean": "hardhat clean",
+    "node": "hardhat node",
+    "coverage": "hardhat coverage",
+    "gas-report": "REPORT_GAS=true hardhat test"
+  },
+  "keywords": [
+    "blockchain",
+    "carbon",
+    "verification",
+    "polygon",
+    "sustainability"
+  ],
+  "author": "Trazo Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@openzeppelin/contracts": "^5.0.0",
+    "hardhat": "^2.19.0",
+    "dotenv": "^16.3.1"
+  },
+  "dependencies": {
+    "ethers": "^6.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trazo/trazo-blockchain"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
