@@ -469,12 +469,33 @@ class PublicProductionViewSet(viewsets.ViewSet):
     @action(detail=True, methods=['get'], url_path='qr-summary')
     def qr_summary(self, request, pk=None):
         try:
-            # Get the production/history record
+            # Phase 1 Optimization: Add caching for QR endpoint
+            from django.core.cache import cache
+            from django.db import connection
             from history.models import History
             from company.models import Establishment
             from .services.blockchain import blockchain_service
             
-            production = History.objects.get(id=pk, published=True)
+            # Quick mode for progressive loading (just carbon score)
+            quick_mode = request.GET.get('quick') == 'true'
+            
+            # Cache key for this production
+            cache_key = f'qr_summary_{pk}_v2{"_quick" if quick_mode else ""}'
+            cached_data = cache.get(cache_key)
+            
+            if cached_data:
+                # Return cached data with fresh timestamp
+                cached_data['cache_hit'] = True
+                cached_data['timestamp'] = timezone.now().isoformat()
+                return Response(cached_data, status=status.HTTP_200_OK)
+            
+            # Optimize database query with select_related and prefetch_related
+            production = History.objects.select_related(
+                'product',
+                'parcel__establishment__company'
+            ).prefetch_related(
+                'carbonentry_set__source'
+            ).get(id=pk, published=True)
             establishment = production.parcel.establishment if production.parcel else None
             
             if not establishment:
@@ -643,6 +664,19 @@ class PublicProductionViewSet(viewsets.ViewSet):
             
             carbon_score = max(1, min(100, round(carbon_score)))
             
+            # Quick mode: return minimal data for fast loading
+            if quick_mode:
+                quick_response = {
+                    'carbonScore': carbon_score,
+                    'totalEmissions': float(total_emissions),
+                    'totalOffsets': float(total_offsets),
+                    'cache_hit': False,
+                    'timestamp': timezone.now().isoformat()
+                }
+                # Cache quick response for 5 minutes
+                cache.set(cache_key, quick_response, 300)
+                return Response(quick_response, status=status.HTTP_200_OK)
+            
             # Create blockchain verification if not already exists
             blockchain_verification = None
             try:
@@ -785,6 +819,52 @@ class PublicProductionViewSet(viewsets.ViewSet):
                     "Look into carbon credit opportunities"
                 ]
             
+            # Add timeline data from production events (if not quick mode)
+            timeline_data = []
+            if not quick_mode:
+                # Get production events for timeline
+                from history.models import ProductionEvent, ChemicalEvent, EquipmentEvent
+                
+                events = []
+                events.extend(ProductionEvent.objects.filter(history=production).select_related())
+                events.extend(ChemicalEvent.objects.filter(history=production).select_related()) 
+                events.extend(EquipmentEvent.objects.filter(history=production).select_related())
+                
+                # Sort events by date
+                events = sorted(events, key=lambda x: x.event_date if hasattr(x, 'event_date') else x.date)
+                
+                for idx, event in enumerate(events[:10]):  # Limit to 10 most recent events
+                    # Determine event type based on the model class and attributes
+                    event_type = 'production.general'  # Default
+                    if hasattr(event, 'chemical_name'):
+                        if 'pesticide' in str(event.chemical_name).lower():
+                            event_type = 'chemical.pesticide'
+                        elif 'fertilizer' in str(event.chemical_name).lower():
+                            event_type = 'chemical.fertilizer' 
+                        elif 'herbicide' in str(event.chemical_name).lower():
+                            event_type = 'chemical.herbicide'
+                        else:
+                            event_type = 'chemical.application'
+                    elif hasattr(event, 'operation_type'):
+                        if 'harvest' in str(event.operation_type).lower():
+                            event_type = 'production.harvesting'
+                        elif 'irrigation' in str(event.operation_type).lower():
+                            event_type = 'production.irrigation'
+                        else:
+                            event_type = 'production.operation'
+                    elif hasattr(event, 'equipment_type'):
+                        event_type = 'production.equipment'
+                    
+                    timeline_data.append({
+                        'id': f'event_{idx}_{event.id}',
+                        'type': event_type,
+                        'date': (event.event_date if hasattr(event, 'event_date') else event.date).isoformat(),
+                        'description': getattr(event, 'notes', getattr(event, 'description', '')),
+                        'observation': getattr(event, 'observation', ''),
+                        'certified': getattr(event, 'certified', False),
+                        'index': idx
+                    })
+            
             # Build the response matching the frontend interface with blockchain data
             response_data = {
                 'carbonScore': carbon_score,
@@ -810,8 +890,41 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 },
                 'verificationDate': benchmark.last_updated.isoformat() if benchmark else None,
                 # Enhanced blockchain verification data
-                'blockchainVerification': blockchain_verification
+                'blockchainVerification': blockchain_verification,
+                # Add essential location and establishment data for consumer experience
+                'farmer': {
+                    'name': establishment.name if establishment else 'Unknown Farm',
+                    'location': f"{establishment.city}, {establishment.state}" if establishment and establishment.city else 'Location not available',
+                    'description': establishment.about[:200] if establishment and establishment.about else None,
+                    'id': establishment.id if establishment else None
+                },
+                'timeline': timeline_data,
+                # Add basic parcel info for location display (without full polygon for performance)
+                'parcel': {
+                    'name': production.parcel.name if production.parcel else 'Field',
+                    'location': f"{establishment.city}, {establishment.state}" if establishment and establishment.city else None,
+                    'area': float(production.parcel.area) if production.parcel and production.parcel.area else None
+                } if production.parcel else None,
+                # Add essential consumer features that were lost when making history API conditional
+                'product': {
+                    'id': production.id,
+                    'name': production.product.name if production.product else 'Product',
+                    'reputation': float(production.reputation) if production.reputation else 4.5
+                },
+                # Add images from production album if available
+                'images': self._get_production_images(production),
+                # Add similar products from the same company (like history API does)
+                'similar_products': self._get_similar_products(production),
+                # Track scan if available
+                'history_scan': getattr(production, 'history_scan', None),
+                # Performance tracking
+                'cache_hit': False,
+                'timestamp': timezone.now().isoformat()
             }
+            
+            # Cache the response for 15 minutes (900 seconds)
+            # Production data doesn't change frequently, so caching is safe
+            cache.set(cache_key, response_data, 900)
             
             return Response(response_data, status=status.HTTP_200_OK)
             
@@ -884,6 +997,78 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 return 'nuts'
                 
         return 'general'
+    
+    def _get_production_images(self, production):
+        """Get images from production album for consumer display"""
+        try:
+            if production.album and production.album.images.exists():
+                images = []
+                for image in production.album.images.all()[:5]:  # Limit to 5 images for performance
+                    # Build absolute URL for image
+                    image_url = None
+                    if image.image:
+                        from django.conf import settings
+                        if image.image.url.startswith('http'):
+                            image_url = image.image.url
+                        else:
+                            # Build absolute URL
+                            base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+                            image_url = f"{base_url.rstrip('/')}{image.image.url}"
+                    
+                    images.append({
+                        'id': image.id,
+                        'image': image_url,
+                        'name': getattr(image, 'name', '') or ''
+                    })
+                return images
+            return []
+        except Exception:
+            return []
+    
+    def _get_similar_products(self, production):
+        """Get similar products from the same company (matching history API logic)"""
+        try:
+            if not production.parcel or not production.parcel.establishment:
+                return []
+            
+            from history.models import History
+            similar_histories = History.objects.filter(
+                parcel__establishment__company=production.parcel.establishment.company,
+                published=True,
+            ).exclude(id=production.id).select_related(
+                'product', 
+                'parcel__establishment'
+            ).order_by('-id')[:5]  # Same logic as history API
+            
+            similar_products = []
+            for history in similar_histories:
+                # Get first image if available with absolute URL
+                image_url = None
+                if history.album and history.album.images.exists():
+                    first_image = history.album.images.first()
+                    if first_image and first_image.image:
+                        # Build absolute URL for image
+                        from django.conf import settings
+                        if hasattr(first_image.image, 'url'):
+                            if first_image.image.url.startswith('http'):
+                                image_url = first_image.image.url
+                            else:
+                                # Build absolute URL
+                                base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+                                image_url = f"{base_url.rstrip('/')}{first_image.image.url}"
+                
+                similar_products.append({
+                    'id': history.id,
+                    'product': {
+                        'name': history.product.name if history.product else 'Product'
+                    },
+                    'reputation': float(history.reputation) if history.reputation else 4.5,
+                    'image': image_url
+                })
+            
+            return similar_products
+        except Exception:
+            return []
 
 
 class CarbonOffsetViewSet(viewsets.ViewSet):
