@@ -23,6 +23,19 @@ class Company(models.Model):
     instagram = models.URLField(max_length=200, blank=True, null=True)
     certifications = models.TextField(blank=True, null=True)
     
+    # Additional business fields
+    zip_code = models.CharField(max_length=20, blank=True, null=True, help_text="Postal/ZIP code")
+    employee_count = models.PositiveIntegerField(blank=True, null=True, help_text="Number of employees")
+    industry = models.CharField(max_length=100, blank=True, null=True, help_text="Primary agricultural industry")
+    is_active = models.BooleanField(default=True, help_text="Whether the company is active")
+    
+    # Sustainability and carbon tracking metadata
+    sustainability_metadata = models.JSONField(
+        blank=True, 
+        null=True, 
+        help_text="JSON data containing crop selection, sustainability goals, and carbon benchmarks"
+    )
+    
     # Blockchain subscription status
     blockchain_subscription_status = models.BooleanField(
         default=False, 

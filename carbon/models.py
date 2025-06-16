@@ -16,13 +16,19 @@ class CarbonSource(models.Model):
     category = models.CharField(max_length=50, help_text='e.g., Fuel, Offset')
     default_emission_factor = models.FloatField(help_text='kg CO2e per unit, USDA-aligned', default=0.0)
     usda_verified = models.BooleanField(default=False, help_text='Whether this source is verified by USDA')
+    # New fields for better verification tracking
+    usda_factors_based = models.BooleanField(default=False, help_text='Whether calculations use USDA emission factors')
+    verification_status = models.CharField(max_length=50, default='estimated', help_text='factors_verified, estimated, calculation_error')
+    data_source = models.CharField(max_length=200, default='Unknown', help_text='Source of emission factors (e.g., USDA Agricultural Research Service)')
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         indexes = [
             models.Index(fields=['category']),
-            models.Index(fields=['usda_verified'])
+            models.Index(fields=['usda_verified']),
+            models.Index(fields=['usda_factors_based']),
+            models.Index(fields=['verification_status'])
         ]
 
     def __str__(self):
@@ -58,6 +64,10 @@ class CarbonEntry(models.Model):
     description = models.TextField(blank=True)
     iot_device_id = models.CharField(max_length=100, blank=True, help_text='ID of IoT device if automated entry')
     usda_verified = models.BooleanField(default=False)
+    # New fields for better verification tracking
+    usda_factors_based = models.BooleanField(default=False, help_text='Whether calculations use USDA emission factors')
+    verification_status = models.CharField(max_length=50, default='estimated', help_text='factors_verified, estimated, calculation_error')
+    data_source = models.CharField(max_length=200, default='Unknown', help_text='Source of emission factors (e.g., USDA Agricultural Research Service)')
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -74,7 +84,9 @@ class CarbonEntry(models.Model):
             models.Index(fields=['year']),
             models.Index(fields=['timestamp']),
             models.Index(fields=['iot_device_id']),
-            models.Index(fields=['usda_verified'])
+            models.Index(fields=['usda_verified']),
+            models.Index(fields=['usda_factors_based']),
+            models.Index(fields=['verification_status'])
         ]
 
     def __str__(self):

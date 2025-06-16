@@ -3,7 +3,7 @@ import os
 from backend.settings.base import *
 from decouple import config
 
-ALLOWED_HOSTS = ("localhost", ".localhost", "192.168.1.3", "7172-167-60-250-132.ngrok-free.app")
+ALLOWED_HOSTS = ("localhost", ".localhost", "127.0.0.1", "192.168.1.3", "7172-167-60-250-132.ngrok-free.app")
 
 # CSRF_TRUSTED_ORIGINS = [
 #     "http://localhost:3000",

@@ -30,6 +30,7 @@ from users.serializers import BasicUserSerializer
 
 class EventSerializer(serializers.ModelSerializer):
     image = serializers.SerializerMethodField()
+    carbon_data = serializers.SerializerMethodField()
 
     class Meta:
         model = CommonEvent
@@ -39,6 +40,78 @@ class EventSerializer(serializers.ModelSerializer):
         if event.album is not None:
             return event.album.images.first().image.url
         return None
+
+    def get_carbon_data(self, event):
+        """
+        Get carbon calculation data for the event.
+        First check if it's stored in extra_data, otherwise calculate it.
+        """
+        try:
+            # Check if carbon calculation is already stored in extra_data
+            if hasattr(event, 'extra_data') and event.extra_data and 'carbon_calculation' in event.extra_data:
+                return event.extra_data['carbon_calculation']
+            
+            # If not stored, calculate it using the EventCarbonCalculator
+            from carbon.services.event_carbon_calculator import EventCarbonCalculator
+            
+            calculator = EventCarbonCalculator()
+            
+            # Determine event type and calculate accordingly
+            if isinstance(event, ChemicalEvent):
+                result = calculator.calculate_chemical_event_impact(event)
+            elif isinstance(event, ProductionEvent):
+                result = calculator.calculate_production_event_impact(event)
+            elif isinstance(event, WeatherEvent):
+                result = calculator.calculate_weather_event_impact(event)
+            elif isinstance(event, EquipmentEvent):
+                result = calculator.calculate_equipment_event_impact(event)
+            elif isinstance(event, SoilManagementEvent):
+                result = calculator.calculate_soil_management_event_impact(event)
+            elif isinstance(event, PestManagementEvent):
+                result = calculator.calculate_pest_management_event_impact(event)
+            elif isinstance(event, GeneralEvent):
+                # For general events, use standard minimal calculation
+                result = {
+                    'co2e': 0.1,
+                    'efficiency_score': 50.0,
+                    'usda_factors_based': False,
+                    'verification_status': 'estimated',
+                    'calculation_method': 'general_event_standard',
+                    'data_source': 'Industry Standards',
+                    'recommendations': [],
+                    'event_type': 'general',
+                    'timestamp': event.date.isoformat() if event.date else None
+                }
+            else:
+                # Fallback for unknown event types
+                result = {
+                    'co2e': 0.0,
+                    'efficiency_score': 50.0,
+                    'usda_factors_based': False,
+                    'verification_status': 'unknown',
+                    'calculation_method': 'unknown_event_type',
+                    'data_source': 'Unknown',
+                    'recommendations': [],
+                    'event_type': 'unknown',
+                    'timestamp': event.date.isoformat() if event.date else None
+                }
+            
+            return result
+            
+        except Exception as e:
+            # Return fallback data if calculation fails
+            return {
+                'co2e': 0.0,
+                'efficiency_score': 50.0,
+                'usda_factors_based': False,
+                'verification_status': 'calculation_error',
+                'calculation_method': 'calculation_error',
+                'data_source': 'Error',
+                'recommendations': [],
+                'event_type': 'error',
+                'timestamp': event.date.isoformat() if event.date else None,
+                'error': str(e)
+            }
 
 
 class UpdateChemicalEventSerializer(serializers.ModelSerializer):

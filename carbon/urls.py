@@ -30,6 +30,12 @@ router.register(r'blockchain', BlockchainVerificationViewSet, basename='blockcha
 urlpatterns = [
     path('', include(router.urls)),
     path('calculate-event-impact/', calculate_event_carbon_impact, name='calculate-event-carbon-impact'),
+    
+    # Enhanced USDA Integration Endpoints
+    path('enhanced-event-impact/', views.calculate_event_impact, name='enhanced-event-impact'),
+    path('usda-credibility/<int:establishment_id>/', views.get_usda_credibility_info, name='usda-credibility'),
+    path('regional-benchmark/<int:establishment_id>/', views.get_regional_benchmark, name='regional-benchmark'),
+    
     path('webhooks/john-deere/', views.john_deere_webhook, name='john_deere_webhook'),
     path('webhooks/weather-station/', views.weather_station_webhook, name='weather_station_webhook'),
     # IoT Device Management
@@ -53,4 +59,18 @@ urlpatterns = [
     path('weather/recommendations/', views.weather_recommendations, name='weather_recommendations'),
     path('weather/forecast/', views.weather_forecast, name='weather_forecast'),
     path('weather/create-alert-event/', views.weather_create_alert_event, name='weather_create_alert_event'),
+    # Carbon Cost Intelligence endpoints (simplified, carbon-focused only)
+    path('productions/<int:production_id>/economics/', views.get_production_carbon_economics, name='production_carbon_economics'),
+    path('productions/<int:production_id>/carbon-credits/', views.get_carbon_credit_potential, name='carbon_credit_potential'),
+    path('establishments/<int:establishment_id>/carbon-summary/', views.get_establishment_carbon_summary, name='establishment_carbon_summary'),
+    # Crop Templates API
+    path('crop-templates/', views.get_crop_templates, name='crop-templates'),
+    path('crop-templates/<str:template_id>/', views.get_crop_template_detail, name='crop-template-detail'),
+    # Educational content endpoints (Week 2)
+    path('education/usda-methodology/', views.get_usda_methodology_content, name='usda-methodology-content'),
+    path('education/regional-practices/<str:state>/<str:crop_type>/', views.get_regional_farming_practices, name='regional-farming-practices'),
+    path('education/carbon-examples/<str:carbon_value>/', views.get_carbon_impact_examples, name='carbon-impact-examples'),
+    path('education/trust-comparison/', views.get_trust_comparison_data, name='trust-comparison-data'),
+    # Generic educational content endpoint
+    path('education/<str:topic>/', views.get_education_content, name='education-content'),
 ] 

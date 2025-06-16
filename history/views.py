@@ -225,6 +225,10 @@ class HistoryViewSet(viewsets.ModelViewSet):
             parcel.current_history = history
             parcel.save()
             
+            # Process template events if provided
+            if data.get('template_events'):
+                self._create_template_events(history, data['template_events'])
+            
             # Create initial blockchain record for this production
             try:
                 from carbon.services.blockchain import blockchain_service
@@ -321,6 +325,90 @@ class HistoryViewSet(viewsets.ModelViewSet):
                 return 'nuts'
                 
         return 'other'
+
+    def _create_template_events(self, history, template_events):
+        """Helper method to create events from template data"""
+        from datetime import datetime
+        from django.utils import timezone
+        
+        # Get current event count once
+        current_event_count = 0
+        
+        for event_data in template_events:
+            if not event_data.get('enabled', True):
+                continue
+                
+            try:
+                # Parse the scheduled date
+                scheduled_date_str = event_data.get('scheduled_date')
+                if scheduled_date_str:
+                    scheduled_date = datetime.fromisoformat(scheduled_date_str.replace('Z', '+00:00'))
+                    if scheduled_date.tzinfo is None:
+                        scheduled_date = timezone.make_aware(scheduled_date)
+                else:
+                    scheduled_date = timezone.now()
+                
+                # Increment index for each event
+                current_event_count += 1
+                
+                # Determine event type based on name
+                event_name = event_data.get('name', '').lower()
+                
+                # Create appropriate event type
+                if 'pruning' in event_name:
+                    ProductionEvent.objects.create(
+                        history=history,
+                        description=f"{event_data.get('name', 'Production Event')}: {event_data.get('efficiency_tips', '')}",
+                        date=scheduled_date,
+                        type=ProductionEvent.PRUNING,
+                        index=current_event_count,
+                        created_by=history.operator
+                    )
+                elif 'harvest' in event_name:
+                    ProductionEvent.objects.create(
+                        history=history,
+                        description=f"{event_data.get('name', 'Production Event')}: {event_data.get('efficiency_tips', '')}",
+                        date=scheduled_date,
+                        type=ProductionEvent.HARVESTING,
+                        index=current_event_count,
+                        created_by=history.operator
+                    )
+                elif 'irrigation' in event_name:
+                    ProductionEvent.objects.create(
+                        history=history,
+                        description=f"{event_data.get('name', 'Production Event')}: {event_data.get('efficiency_tips', '')}",
+                        date=scheduled_date,
+                        type=ProductionEvent.IRRIGATION,
+                        index=current_event_count,
+                        created_by=history.operator
+                    )
+                elif 'fertiliz' in event_name:
+                    # Create as Chemical Event for fertilization
+                    ChemicalEvent.objects.create(
+                        history=history,
+                        description=f"{event_data.get('name', 'Chemical Event')}: {event_data.get('efficiency_tips', '')}",
+                        date=scheduled_date,
+                        type=ChemicalEvent.FERTILIZER,
+                        commercial_name=event_data.get('carbon_sources', ['Unknown'])[0] if event_data.get('carbon_sources') else 'Unknown',
+                        volume=event_data.get('typical_amounts', {}).get('fertilizer', 'Unknown'),
+                        index=current_event_count,
+                        created_by=history.operator
+                    )
+                else:
+                    # Create as General Event for other types
+                    GeneralEvent.objects.create(
+                        history=history,
+                        name=event_data.get('name', 'General Event'),
+                        description=f"{event_data.get('name', 'General Event')}: {event_data.get('efficiency_tips', '')}",
+                        date=scheduled_date,
+                        index=current_event_count,
+                        created_by=history.operator
+                    )
+                    
+            except Exception as e:
+                print(f"Error creating template event {event_data.get('name', 'Unknown')}: {e}")
+                # Continue with other events even if one fails
+                continue
 
     @action(detail=True, methods=["get"], permission_classes=[AllowAny])
     def public_history(self, request, pk=None):
@@ -660,6 +748,9 @@ class EventViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
                     + history.history_chemicalevent_events.count()
                     + history.history_generalevent_events.count()
                     + history.history_productionevent_events.count()
+                    + history.history_equipmentevent_events.count()
+                    + history.history_soilmanagementevent_events.count()
+                    + history.history_pestmanagementevent_events.count()
                 ) + 1
 
                 event_model = EVENT_TYPE_TO_MODEL.get(int(event_type), GeneralEvent)

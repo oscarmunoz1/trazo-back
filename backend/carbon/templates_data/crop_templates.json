@@ -1,0 +1,363 @@
+{
+  "citrus_oranges": {
+    "display_name": "Citrus (Oranges)",
+    "category": "Tree Fruit",
+    "typical_farm_size": "20-100 hectares",
+    "growing_season": "12 months (evergreen)",
+    "harvest_season": "November - April",
+    "usda_benchmarks": {
+      "emissions_per_hectare": 3200,
+      "industry_average": 3200,
+      "best_practice": 2100,
+      "carbon_credit_potential": 500
+    },
+    "typical_costs": {
+      "fertilizer_per_hectare": 450,
+      "fuel_per_hectare": 280,
+      "irrigation_per_hectare": 320,
+      "labor_per_hectare": 1200,
+      "total_per_hectare": 2250
+    },
+    "common_events": [
+      {
+        "name": "Winter Pruning",
+        "timing": "December - February",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Citrus Pruning Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "12 liters per hectare"
+        },
+        "carbon_impact": 32,
+        "cost_estimate": 180,
+        "efficiency_tips": "Use precision pruning to reduce fuel consumption by 15%"
+      },
+      {
+        "name": "Spring Fertilization",
+        "timing": "March - April",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Citrus Fertilizer (NPK 10-10-10)"
+        ],
+        "typical_amounts": {
+          "fertilizer": "200 kg per hectare"
+        },
+        "carbon_impact": 596,
+        "cost_estimate": 450,
+        "efficiency_tips": "Soil testing can reduce fertilizer needs by 20-30%"
+      },
+      {
+        "name": "Drip Irrigation",
+        "timing": "April - October",
+        "frequency": "Seasonal",
+        "carbon_sources": [
+          "Citrus Irrigation System"
+        ],
+        "typical_amounts": {
+          "energy": "800 kWh per hectare"
+        },
+        "carbon_impact": 360,
+        "cost_estimate": 320,
+        "efficiency_tips": "Smart irrigation controllers can save 25% energy"
+      },
+      {
+        "name": "Harvest",
+        "timing": "November - April",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Citrus Pruning Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "25 liters per hectare"
+        },
+        "carbon_impact": 67,
+        "cost_estimate": 400,
+        "efficiency_tips": "Mechanical harvesting reduces labor costs and emissions"
+      }
+    ],
+    "sustainability_opportunities": [
+      "Install solar panels for irrigation pumps (reduce emissions by 360 kg CO2e/ha)",
+      "Implement cover cropping (sequester 1200 kg CO2e/ha/year)",
+      "Use precision fertilizer application (reduce fertilizer emissions by 20%)",
+      "Convert to organic practices (premium pricing 15-30%)"
+    ],
+    "premium_pricing_potential": {
+      "organic_premium": "25-40%",
+      "sustainable_premium": "10-20%",
+      "local_premium": "5-15%"
+    },
+    "carbon_credit_eligibility": {
+      "cover_crops": "Yes - $15-25 per ton CO2e",
+      "no_till": "Limited (perennial crop)",
+      "precision_agriculture": "Yes - $10-20 per ton CO2e",
+      "renewable_energy": "Yes - $20-30 per ton CO2e"
+    }
+  },
+  "almonds": {
+    "display_name": "Almonds",
+    "category": "Tree Nut",
+    "typical_farm_size": "40-200 hectares",
+    "growing_season": "12 months (deciduous)",
+    "harvest_season": "August - October",
+    "usda_benchmarks": {
+      "emissions_per_hectare": 4100,
+      "industry_average": 4100,
+      "best_practice": 2800,
+      "carbon_credit_potential": 650
+    },
+    "typical_costs": {
+      "fertilizer_per_hectare": 380,
+      "fuel_per_hectare": 420,
+      "pollination_per_hectare": 500,
+      "irrigation_per_hectare": 450,
+      "total_per_hectare": 1750
+    },
+    "common_events": [
+      {
+        "name": "Dormant Pruning",
+        "timing": "December - January",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Almond Harvest Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "15 liters per hectare"
+        },
+        "carbon_impact": 40,
+        "cost_estimate": 220,
+        "efficiency_tips": "Mechanical pruning reduces labor and fuel costs"
+      },
+      {
+        "name": "Bloom Nutrition",
+        "timing": "February - March",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Almond Fertilizer (Nitrogen)"
+        ],
+        "typical_amounts": {
+          "nitrogen": "120 kg N per hectare"
+        },
+        "carbon_impact": 704,
+        "cost_estimate": 380,
+        "efficiency_tips": "Leaf tissue analysis optimizes fertilizer timing"
+      },
+      {
+        "name": "Pollination",
+        "timing": "February - March",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Almond Pollination Transport"
+        ],
+        "typical_amounts": {
+          "transport": "200 km per hectare"
+        },
+        "carbon_impact": 24,
+        "cost_estimate": 500,
+        "efficiency_tips": "Local bee colonies reduce transport emissions"
+      },
+      {
+        "name": "Harvest",
+        "timing": "August - October",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Almond Harvest Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "28 liters per hectare"
+        },
+        "carbon_impact": 75,
+        "cost_estimate": 350,
+        "efficiency_tips": "Modern shakers improve efficiency by 20%"
+      }
+    ],
+    "sustainability_opportunities": [
+      "Install bee-friendly cover crops (improve pollination + sequester carbon)",
+      "Use deficit irrigation strategies (reduce water use by 20%)",
+      "Implement integrated pest management (reduce chemical inputs)",
+      "Convert hull waste to biochar (carbon sequestration opportunity)"
+    ],
+    "premium_pricing_potential": {
+      "organic_premium": "30-50%",
+      "sustainable_premium": "15-25%",
+      "bee_friendly_premium": "10-20%"
+    }
+  },
+  "soybeans": {
+    "display_name": "Soybeans",
+    "category": "Oilseed",
+    "typical_farm_size": "100-500 hectares",
+    "growing_season": "4-5 months",
+    "harvest_season": "September - November",
+    "usda_benchmarks": {
+      "emissions_per_hectare": 1800,
+      "industry_average": 1800,
+      "best_practice": 1200,
+      "carbon_credit_potential": 800
+    },
+    "typical_costs": {
+      "seed_per_hectare": 180,
+      "fuel_per_hectare": 150,
+      "herbicide_per_hectare": 120,
+      "total_per_hectare": 450
+    },
+    "common_events": [
+      {
+        "name": "Planting",
+        "timing": "April - June",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Soybean Planting Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "8 liters per hectare"
+        },
+        "carbon_impact": 21,
+        "cost_estimate": 80,
+        "efficiency_tips": "No-till planting reduces fuel use by 40%"
+      },
+      {
+        "name": "Weed Control",
+        "timing": "May - July",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Soybean Herbicide Application"
+        ],
+        "typical_amounts": {
+          "herbicide": "3 liters per hectare"
+        },
+        "carbon_impact": 26,
+        "cost_estimate": 120,
+        "efficiency_tips": "Precision spraying reduces herbicide use by 25%"
+      },
+      {
+        "name": "Nitrogen Fixation",
+        "timing": "June - August",
+        "frequency": "Natural Process",
+        "carbon_sources": [
+          "Soybean Nitrogen Fixation Credit"
+        ],
+        "typical_amounts": {
+          "nitrogen_fixed": "150 kg N per hectare"
+        },
+        "carbon_impact": -881,
+        "cost_estimate": 0,
+        "efficiency_tips": "Proper inoculation maximizes nitrogen fixation"
+      },
+      {
+        "name": "Harvest",
+        "timing": "September - November",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Soybean Planting Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "12 liters per hectare"
+        },
+        "carbon_impact": 32,
+        "cost_estimate": 150,
+        "efficiency_tips": "Combine efficiency reduces fuel consumption"
+      }
+    ],
+    "sustainability_opportunities": [
+      "Implement no-till practices (sequester 800 kg CO2e/ha/year)",
+      "Plant cover crops after harvest (additional 1200 kg CO2e/ha)",
+      "Use precision agriculture (reduce inputs by 15-20%)",
+      "Maximize nitrogen fixation (reduce synthetic fertilizer needs)"
+    ],
+    "premium_pricing_potential": {
+      "non_gmo_premium": "10-25%",
+      "organic_premium": "40-60%",
+      "sustainable_premium": "5-15%"
+    }
+  },
+  "corn_field": {
+    "display_name": "Corn (Field)",
+    "category": "Grain",
+    "typical_farm_size": "200-800 hectares",
+    "growing_season": "4-5 months",
+    "harvest_season": "September - November",
+    "usda_benchmarks": {
+      "emissions_per_hectare": 2900,
+      "industry_average": 2900,
+      "best_practice": 2000,
+      "carbon_credit_potential": 450
+    },
+    "typical_costs": {
+      "seed_per_hectare": 280,
+      "fertilizer_per_hectare": 420,
+      "fuel_per_hectare": 180,
+      "drying_per_hectare": 150,
+      "total_per_hectare": 1030
+    },
+    "common_events": [
+      {
+        "name": "Planting",
+        "timing": "April - May",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Soybean Planting Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "10 liters per hectare"
+        },
+        "carbon_impact": 27,
+        "cost_estimate": 100,
+        "efficiency_tips": "Variable rate planting optimizes seed placement"
+      },
+      {
+        "name": "Nitrogen Application",
+        "timing": "May - June",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Corn Nitrogen Fertilizer"
+        ],
+        "typical_amounts": {
+          "nitrogen": "180 kg N per hectare"
+        },
+        "carbon_impact": 1057,
+        "cost_estimate": 420,
+        "efficiency_tips": "Split applications improve efficiency by 15%"
+      },
+      {
+        "name": "Harvest",
+        "timing": "September - November",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Corn Harvest Equipment"
+        ],
+        "typical_amounts": {
+          "fuel": "18 liters per hectare"
+        },
+        "carbon_impact": 48,
+        "cost_estimate": 180,
+        "efficiency_tips": "Modern combines reduce fuel use per ton"
+      },
+      {
+        "name": "Grain Drying",
+        "timing": "September - November",
+        "frequency": "Annual",
+        "carbon_sources": [
+          "Corn Drying Energy"
+        ],
+        "typical_amounts": {
+          "natural_gas": "75 cubic meters per hectare"
+        },
+        "carbon_impact": 150,
+        "cost_estimate": 150,
+        "efficiency_tips": "Field drying reduces energy needs by 30%"
+      }
+    ],
+    "sustainability_opportunities": [
+      "Implement precision nitrogen management (reduce emissions by 20%)",
+      "Use cover crops (sequester 1200 kg CO2e/ha/year)",
+      "Adopt no-till practices (save 800 kg CO2e/ha/year)",
+      "Install on-farm renewable energy for drying"
+    ],
+    "premium_pricing_potential": {
+      "non_gmo_premium": "5-15%",
+      "organic_premium": "25-40%",
+      "sustainable_premium": "3-10%"
+    }
+  }
+}

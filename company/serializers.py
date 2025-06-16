@@ -357,6 +357,12 @@ class RetrieveCompanySerializer(ModelSerializer):
             "facebook",
             "instagram",
             "certifications",
+            "zip_code",
+            "employee_count",
+            "industry",
+            "is_active",
+            "sustainability_metadata",
+            "blockchain_subscription_status",
             "establishments",
             "image",
             "subscription",
@@ -439,6 +445,13 @@ class CreateCompanySerializer(ModelSerializer):
     class Meta:
         model = Company
         exclude = (
-            "fiscal_id",
             "invitation_code",
         )
+        extra_kwargs = {
+            'fiscal_id': {'required': False},
+            'zip_code': {'required': False},
+            'employee_count': {'required': False},
+            'industry': {'required': False},
+            'is_active': {'required': False},
+            'sustainability_metadata': {'required': False},
+        }

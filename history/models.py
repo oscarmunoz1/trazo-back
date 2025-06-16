@@ -162,6 +162,9 @@ class History(models.Model):
             ChemicalEventSerializer,
             ProductionEventSerializer,
             GeneralEventSerializer,
+            EquipmentEventSerializer,
+            SoilManagementEventSerializer,
+            PestManagementEventSerializer,
         )
 
         events = (
@@ -176,6 +179,15 @@ class History(models.Model):
             ).data
             + GeneralEventSerializer(
                 self.history_generalevent_events.all(), many=True
+            ).data
+            + EquipmentEventSerializer(
+                self.history_equipmentevent_events.all(), many=True
+            ).data
+            + SoilManagementEventSerializer(
+                self.history_soilmanagementevent_events.all(), many=True
+            ).data
+            + PestManagementEventSerializer(
+                self.history_pestmanagementevent_events.all(), many=True
             ).data
         )
         return sorted(events, key=lambda event: event["index"])
