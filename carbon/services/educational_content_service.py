@@ -675,14 +675,14 @@ class EducationalContentService:
     def get_verification_process_content(self, user_level: str = 'beginner', context: Dict[str, Any] = None) -> Dict[str, Any]:
         """Get educational content about verification processes"""
         return {
-            'title': 'How We Verify Carbon Data',
-            'subtitle': 'The steps that ensure accuracy and prevent greenwashing',
-            'overview': 'Verification is crucial for trust in carbon data. We use multiple layers of checking to ensure the numbers you see are accurate and honest.',
+            'title': 'How We Verify Farm Data',
+            'subtitle': 'Building trust through transparency',
+            'overview': 'Every piece of farm data goes through multiple verification steps to ensure accuracy and prevent greenwashing.',
             'sections': [
                 {
-                    'title': 'Farm Data Collection',
-                    'content': 'Farmers provide detailed records of their practices: fertilizer use, fuel consumption, equipment usage, and field operations. This data is cross-checked for consistency.',
-                    'icon': 'clipboard',
+                    'title': 'Documentation Review',
+                    'content': 'Farmers provide detailed records of all activities including inputs used, dates of application, and quantities. These records are cross-referenced with purchase receipts and field logs.',
+                    'icon': 'file-text',
                     'type': 'process',
                     'key_takeaway': 'Detailed farm records are the foundation'
                 },
@@ -751,3 +751,48 @@ class EducationalContentService:
             'confidence_level': 87,
             'last_updated': '2024-03-15'
         }
+
+    def get_educational_content(self, topic: str, user_level: str = 'beginner', context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Get educational content for a specific topic"""
+        content_map = {
+            'usda-methodology': self.get_usda_methodology_content,
+            'carbon-scoring': self.get_carbon_scoring_content,
+            'regional-benchmarks': self.get_regional_benchmarks_content,
+            'trust-indicators': self.get_trust_indicators_content,
+            'farming-practices': self.get_farming_practices_content,
+            'carbon-examples': self.get_carbon_examples_content,
+            'verification-process': self.get_verification_process_content,
+            'sustainability-metrics': self.get_sustainability_metrics_content
+        }
+        
+        if topic in content_map:
+            return content_map[topic](user_level, context)
+        else:
+            return self._get_fallback_content()
+
+    def get_contextual_education(self, carbon_score: float, establishment_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Get contextual educational content based on carbon score and establishment data"""
+        suggestions = []
+        
+        # Score-based suggestions
+        if carbon_score > 2.0:
+            suggestions.append({
+                'topic': 'farming-practices',
+                'priority': 'high',
+                'reason': 'Higher carbon footprint - learn about reduction strategies'
+            })
+        elif carbon_score < 1.0:
+            suggestions.append({
+                'topic': 'carbon-examples',
+                'priority': 'medium',
+                'reason': 'Excellent performance - see how you compare'
+            })
+        
+        # Always include methodology for transparency
+        suggestions.append({
+            'topic': 'usda-methodology',
+            'priority': 'medium',
+            'reason': 'Understand how carbon scores are calculated'
+        })
+        
+        return suggestions

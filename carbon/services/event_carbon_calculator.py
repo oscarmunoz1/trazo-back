@@ -1048,3 +1048,427 @@ class EventCarbonCalculator:
         )
         
         return source 
+        recommendations = []
+        
+        if event.type == 'TI':  # Tillage
+            recommendations.append({
+                'type': 'conservation',
+                'title': 'Consider No-Till Practices',
+                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
+                'potential_savings': 0.0,
+                'carbon_reduction': 10.0
+            })
+        
+        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
+            recommendations.append({
+                'type': 'soil_health',
+                'title': 'pH Adjustment Needed',
+                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
+                'potential_savings': 200.0,
+                'carbon_reduction': 5.0
+            })
+        
+        return recommendations
+
+    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for business events"""
+        recommendations = []
+        
+        if event.type == 'HS':
+            recommendations.append({
+                'type': 'logistics',
+                'title': 'Optimize Transportation',
+                'description': 'Consolidate shipments to reduce transportation emissions',
+                'potential_savings': 100.0,
+                'carbon_reduction': emissions * 0.3
+            })
+        
+        if event.type == 'CE':
+            recommendations.append({
+                'type': 'certification',
+                'title': 'Expand Carbon Credit Programs',
+                'description': 'Additional sustainable practices can generate more carbon credits',
+                'potential_savings': 1000.0,
+                'carbon_reduction': 20.0
+            })
+        
+        return recommendations
+
+    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for pest management events"""
+        recommendations = []
+        
+        if event.type == 'SC' and event.pest_pressure_level == 'High':
+            recommendations.append({
+                'type': 'ipm',
+                'title': 'Implement Biological Control',
+                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
+                'potential_savings': 300.0,
+                'carbon_reduction': 5.0
+            })
+        
+        if event.type == 'IP':
+            recommendations.append({
+                'type': 'monitoring',
+                'title': 'Expand IPM Monitoring',
+                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
+                'potential_savings': 500.0,
+                'carbon_reduction': 8.0
+            })
+        
+        return recommendations
+
+    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
+        """
+        Get or create a CarbonSource for the given event type.
+        """
+        from ..models import CarbonSource
+        
+        # Map event types to carbon source names
+        source_mapping = {
+            'FE': 'Fertilizer Application',
+            'PE': 'Pesticide Application', 
+            'HE': 'Herbicide Application',
+            'FU': 'Fungicide Application',
+            'IR': 'Irrigation',
+            'HA': 'Harvesting',
+            'PL': 'Planting',
+            'PR': 'Pruning',
+            'FC': 'Fuel Consumption',
+            'MA': 'Equipment Maintenance',
+            'RE': 'Equipment Repair',
+            'CA': 'Equipment Calibration',
+            'BR': 'Equipment Breakdown',
+        }
+        
+        source_name = source_mapping.get(event.type, f'{event.type} Activity')
+        
+        source, created = CarbonSource.objects.get_or_create(
+            name=source_name,
+            defaults={
+                'category': 'agricultural_activity',
+                'description': f'Carbon emissions from {source_name.lower()}',
+                'usda_factors_based': True,
+                'verification_status': 'factors_verified'
+            }
+        )
+        
+        return source 
+        recommendations = []
+        
+        if event.type == 'TI':  # Tillage
+            recommendations.append({
+                'type': 'conservation',
+                'title': 'Consider No-Till Practices',
+                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
+                'potential_savings': 0.0,
+                'carbon_reduction': 10.0
+            })
+        
+        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
+            recommendations.append({
+                'type': 'soil_health',
+                'title': 'pH Adjustment Needed',
+                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
+                'potential_savings': 200.0,
+                'carbon_reduction': 5.0
+            })
+        
+        return recommendations
+
+    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for business events"""
+        recommendations = []
+        
+        if event.type == 'HS':
+            recommendations.append({
+                'type': 'logistics',
+                'title': 'Optimize Transportation',
+                'description': 'Consolidate shipments to reduce transportation emissions',
+                'potential_savings': 100.0,
+                'carbon_reduction': emissions * 0.3
+            })
+        
+        if event.type == 'CE':
+            recommendations.append({
+                'type': 'certification',
+                'title': 'Expand Carbon Credit Programs',
+                'description': 'Additional sustainable practices can generate more carbon credits',
+                'potential_savings': 1000.0,
+                'carbon_reduction': 20.0
+            })
+        
+        return recommendations
+
+    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for pest management events"""
+        recommendations = []
+        
+        if event.type == 'SC' and event.pest_pressure_level == 'High':
+            recommendations.append({
+                'type': 'ipm',
+                'title': 'Implement Biological Control',
+                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
+                'potential_savings': 300.0,
+                'carbon_reduction': 5.0
+            })
+        
+        if event.type == 'IP':
+            recommendations.append({
+                'type': 'monitoring',
+                'title': 'Expand IPM Monitoring',
+                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
+                'potential_savings': 500.0,
+                'carbon_reduction': 8.0
+            })
+        
+        return recommendations
+
+    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
+        """
+        Get or create a CarbonSource for the given event type.
+        """
+        from ..models import CarbonSource
+        
+        # Map event types to carbon source names
+        source_mapping = {
+            'FE': 'Fertilizer Application',
+            'PE': 'Pesticide Application', 
+            'HE': 'Herbicide Application',
+            'FU': 'Fungicide Application',
+            'IR': 'Irrigation',
+            'HA': 'Harvesting',
+            'PL': 'Planting',
+            'PR': 'Pruning',
+            'FC': 'Fuel Consumption',
+            'MA': 'Equipment Maintenance',
+            'RE': 'Equipment Repair',
+            'CA': 'Equipment Calibration',
+            'BR': 'Equipment Breakdown',
+        }
+        
+        source_name = source_mapping.get(event.type, f'{event.type} Activity')
+        
+        source, created = CarbonSource.objects.get_or_create(
+            name=source_name,
+            defaults={
+                'category': 'agricultural_activity',
+                'description': f'Carbon emissions from {source_name.lower()}',
+                'usda_factors_based': True,
+                'verification_status': 'factors_verified'
+            }
+        )
+        
+        return source 
+        recommendations = []
+        
+        if event.type == 'TI':  # Tillage
+            recommendations.append({
+                'type': 'conservation',
+                'title': 'Consider No-Till Practices',
+                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
+                'potential_savings': 0.0,
+                'carbon_reduction': 10.0
+            })
+        
+        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
+            recommendations.append({
+                'type': 'soil_health',
+                'title': 'pH Adjustment Needed',
+                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
+                'potential_savings': 200.0,
+                'carbon_reduction': 5.0
+            })
+        
+        return recommendations
+
+    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for business events"""
+        recommendations = []
+        
+        if event.type == 'HS':
+            recommendations.append({
+                'type': 'logistics',
+                'title': 'Optimize Transportation',
+                'description': 'Consolidate shipments to reduce transportation emissions',
+                'potential_savings': 100.0,
+                'carbon_reduction': emissions * 0.3
+            })
+        
+        if event.type == 'CE':
+            recommendations.append({
+                'type': 'certification',
+                'title': 'Expand Carbon Credit Programs',
+                'description': 'Additional sustainable practices can generate more carbon credits',
+                'potential_savings': 1000.0,
+                'carbon_reduction': 20.0
+            })
+        
+        return recommendations
+
+    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for pest management events"""
+        recommendations = []
+        
+        if event.type == 'SC' and event.pest_pressure_level == 'High':
+            recommendations.append({
+                'type': 'ipm',
+                'title': 'Implement Biological Control',
+                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
+                'potential_savings': 300.0,
+                'carbon_reduction': 5.0
+            })
+        
+        if event.type == 'IP':
+            recommendations.append({
+                'type': 'monitoring',
+                'title': 'Expand IPM Monitoring',
+                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
+                'potential_savings': 500.0,
+                'carbon_reduction': 8.0
+            })
+        
+        return recommendations
+
+    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
+        """
+        Get or create a CarbonSource for the given event type.
+        """
+        from ..models import CarbonSource
+        
+        # Map event types to carbon source names
+        source_mapping = {
+            'FE': 'Fertilizer Application',
+            'PE': 'Pesticide Application', 
+            'HE': 'Herbicide Application',
+            'FU': 'Fungicide Application',
+            'IR': 'Irrigation',
+            'HA': 'Harvesting',
+            'PL': 'Planting',
+            'PR': 'Pruning',
+            'FC': 'Fuel Consumption',
+            'MA': 'Equipment Maintenance',
+            'RE': 'Equipment Repair',
+            'CA': 'Equipment Calibration',
+            'BR': 'Equipment Breakdown',
+        }
+        
+        source_name = source_mapping.get(event.type, f'{event.type} Activity')
+        
+        source, created = CarbonSource.objects.get_or_create(
+            name=source_name,
+            defaults={
+                'category': 'agricultural_activity',
+                'description': f'Carbon emissions from {source_name.lower()}',
+                'usda_factors_based': True,
+                'verification_status': 'factors_verified'
+            }
+        )
+        
+        return source 
+        recommendations = []
+        
+        if event.type == 'TI':  # Tillage
+            recommendations.append({
+                'type': 'conservation',
+                'title': 'Consider No-Till Practices',
+                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
+                'potential_savings': 0.0,
+                'carbon_reduction': 10.0
+            })
+        
+        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
+            recommendations.append({
+                'type': 'soil_health',
+                'title': 'pH Adjustment Needed',
+                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
+                'potential_savings': 200.0,
+                'carbon_reduction': 5.0
+            })
+        
+        return recommendations
+
+    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for business events"""
+        recommendations = []
+        
+        if event.type == 'HS':
+            recommendations.append({
+                'type': 'logistics',
+                'title': 'Optimize Transportation',
+                'description': 'Consolidate shipments to reduce transportation emissions',
+                'potential_savings': 100.0,
+                'carbon_reduction': emissions * 0.3
+            })
+        
+        if event.type == 'CE':
+            recommendations.append({
+                'type': 'certification',
+                'title': 'Expand Carbon Credit Programs',
+                'description': 'Additional sustainable practices can generate more carbon credits',
+                'potential_savings': 1000.0,
+                'carbon_reduction': 20.0
+            })
+        
+        return recommendations
+
+    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
+        """Generate recommendations for pest management events"""
+        recommendations = []
+        
+        if event.type == 'SC' and event.pest_pressure_level == 'High':
+            recommendations.append({
+                'type': 'ipm',
+                'title': 'Implement Biological Control',
+                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
+                'potential_savings': 300.0,
+                'carbon_reduction': 5.0
+            })
+        
+        if event.type == 'IP':
+            recommendations.append({
+                'type': 'monitoring',
+                'title': 'Expand IPM Monitoring',
+                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
+                'potential_savings': 500.0,
+                'carbon_reduction': 8.0
+            })
+        
+        return recommendations
+
+    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
+        """
+        Get or create a CarbonSource for the given event type.
+        """
+        from ..models import CarbonSource
+        
+        # Map event types to carbon source names
+        source_mapping = {
+            'FE': 'Fertilizer Application',
+            'PE': 'Pesticide Application', 
+            'HE': 'Herbicide Application',
+            'FU': 'Fungicide Application',
+            'IR': 'Irrigation',
+            'HA': 'Harvesting',
+            'PL': 'Planting',
+            'PR': 'Pruning',
+            'FC': 'Fuel Consumption',
+            'MA': 'Equipment Maintenance',
+            'RE': 'Equipment Repair',
+            'CA': 'Equipment Calibration',
+            'BR': 'Equipment Breakdown',
+        }
+        
+        source_name = source_mapping.get(event.type, f'{event.type} Activity')
+        
+        source, created = CarbonSource.objects.get_or_create(
+            name=source_name,
+            defaults={
+                'category': 'agricultural_activity',
+                'description': f'Carbon emissions from {source_name.lower()}',
+                'usda_factors_based': True,
+                'verification_status': 'factors_verified'
+            }
+        )
+        
+        return source 

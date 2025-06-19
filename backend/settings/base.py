@@ -422,15 +422,35 @@ STRIPE_SECRET_KEY = config("STRIPE_SECRET_KEY", default="")
 STRIPE_WEBHOOK_SECRET = config("STRIPE_WEBHOOK_SECRET", default="")
 FRONTEND_URL = config("FRONTEND_URL", default="http://app.localhost:3000")
 
-# Blockchain Configuration (Polygon Amoy Testnet)
-POLYGON_RPC_URL = config("POLYGON_RPC_URL", default="https://rpc-amoy.polygon.technology/")
+# Blockchain Configuration - Environment Specific Polygon Networks
+ENVIRONMENT = config("ENVIRONMENT", default="development")
+
+# Polygon Network Configuration
+if ENVIRONMENT == "production":
+    # Production: Polygon Mainnet
+    POLYGON_RPC_URL = config("POLYGON_RPC_URL", default="https://polygon-rpc.com/")
+    POLYGON_CHAIN_ID = 137
+    POLYGON_EXPLORER_URL = "https://polygonscan.com"
+    BLOCKCHAIN_NETWORK_NAME = "polygon_mainnet"
+else:
+    # Development/Staging: Polygon Amoy Testnet
+    POLYGON_RPC_URL = config("POLYGON_RPC_URL", default="https://rpc-amoy.polygon.technology/")
+    POLYGON_CHAIN_ID = 80002
+    POLYGON_EXPLORER_URL = "https://amoy.polygonscan.com"
+    BLOCKCHAIN_NETWORK_NAME = "polygon_amoy"
+
+# Blockchain Contract Configuration
 CARBON_CONTRACT_ADDRESS = config("CARBON_CONTRACT_ADDRESS", default="")
 BLOCKCHAIN_PRIVATE_KEY = config("BLOCKCHAIN_PRIVATE_KEY", default="")
 
 # Blockchain Feature Settings
-BLOCKCHAIN_ENABLED = config("BLOCKCHAIN_ENABLED", default=False, cast=bool)
+BLOCKCHAIN_ENABLED = config("BLOCKCHAIN_ENABLED", default=True, cast=bool)
 AUTO_VERIFY_CARBON_RECORDS = config("AUTO_VERIFY_CARBON_RECORDS", default=True, cast=bool)
 USDA_VERIFICATION_ENABLED = config("USDA_VERIFICATION_ENABLED", default=True, cast=bool)
+
+# Carbon Transparency Mission Alignment
+CARBON_TRANSPARENCY_FOCUS = True  # Core mission: agricultural carbon transparency
+FARM_MANAGEMENT_FEATURES_DISABLED = True  # Stay focused on carbon, not farm optimization
 
 # Celery Beat Schedule for Blockchain Tasks
 CELERY_BEAT_SCHEDULE = {

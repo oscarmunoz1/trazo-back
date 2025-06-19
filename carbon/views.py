@@ -225,7 +225,11 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
                         region=region
                     )
                     serializer.validated_data['amount'] = result['co2e']
-                    serializer.validated_data['usda_verified'] = result['usda_verified']
+                    # Use USDA factors but not actually USDA verified
+                    serializer.validated_data['usda_factors_based'] = True
+                    serializer.validated_data['usda_verified'] = False  # No actual USDA verification
+                    serializer.validated_data['verification_status'] = 'factors_verified'
+                    serializer.validated_data['data_source'] = 'USDA Agricultural Research Service'
             except Exception as e:
                 # Log error but continue with creation
                 logger.error(f"Error calculating emissions: {e}")
@@ -1387,8 +1391,9 @@ class PublicProductionViewSet(viewsets.ViewSet):
         return 'general'
     
     def _get_production_images(self, production):
-        """Get images from production album for consumer display"""
+        """Get images from production album for consumer display with intelligent fallbacks"""
         try:
+            # First, try to get actual production images
             if production.album and production.album.images.exists():
                 images = []
                 for image in production.album.images.all()[:5]:  # Limit to 5 images for performance
@@ -1409,9 +1414,90 @@ class PublicProductionViewSet(viewsets.ViewSet):
                         'name': getattr(image, 'name', '') or ''
                     })
                 return images
-            return []
-        except Exception:
-            return []
+            
+            # If no production images, try parcel images
+            if production.parcel and production.parcel.album and production.parcel.album.images.exists():
+                images = []
+                for image in production.parcel.album.images.all()[:3]:  # Limit to 3 parcel images
+                    image_url = None
+                    if image.image:
+                        from django.conf import settings
+                        if image.image.url.startswith('http'):
+                            image_url = image.image.url
+                        else:
+                            base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+                            image_url = f"{base_url.rstrip('/')}{image.image.url}"
+                    
+                    images.append({
+                        'id': f"parcel_{image.id}",
+                        'image': image_url,
+                        'name': f"Field: {getattr(image, 'name', '') or production.parcel.name}"
+                    })
+                return images
+            
+            # If no parcel images, try establishment images
+            if (production.parcel and production.parcel.establishment and 
+                production.parcel.establishment.album and 
+                production.parcel.establishment.album.images.exists()):
+                images = []
+                for image in production.parcel.establishment.album.images.all()[:2]:  # Limit to 2 establishment images
+                    image_url = None
+                    if image.image:
+                        from django.conf import settings
+                        if image.image.url.startswith('http'):
+                            image_url = image.image.url
+                        else:
+                            base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+                            image_url = f"{base_url.rstrip('/')}{image.image.url}"
+                    
+                    images.append({
+                        'id': f"establishment_{image.id}",
+                        'image': image_url,
+                        'name': f"Farm: {getattr(image, 'name', '') or production.parcel.establishment.name}"
+                    })
+                return images
+            
+            # If no real images available, provide crop-specific placeholder images
+            crop_name = production.product.name.lower() if production.product else "unknown"
+            crop_type = crop_name.replace(' ', '_')
+            
+            # Map crop types to placeholder images
+            crop_placeholders = {
+                'tree_fruit': 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=800&h=600&fit=crop&crop=center',
+                'orange': 'https://images.unsplash.com/photo-1547514701-42782101795e?w=800&h=600&fit=crop&crop=center',
+                'valencia_orange': 'https://images.unsplash.com/photo-1547514701-42782101795e?w=800&h=600&fit=crop&crop=center',
+                'lettuce': 'https://images.unsplash.com/photo-1622206151226-18ca2c9ab4a1?w=800&h=600&fit=crop&crop=center',
+                'apple': 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=800&h=600&fit=crop&crop=center',
+                'tomato': 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=800&h=600&fit=crop&crop=center',
+                'corn': 'https://images.unsplash.com/photo-1551754655-cd27e38d2076?w=800&h=600&fit=crop&crop=center',
+                'wheat': 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=800&h=600&fit=crop&crop=center',
+                'carrot': 'https://images.unsplash.com/photo-1598170845058-32b9d6a5da37?w=800&h=600&fit=crop&crop=center',
+                'potato': 'https://images.unsplash.com/photo-1518977676601-b53f82aba655?w=800&h=600&fit=crop&crop=center',
+            }
+            
+            # Get specific placeholder or default to generic farm image
+            placeholder_url = crop_placeholders.get(
+                crop_type, 
+                crop_placeholders.get(
+                    crop_name,
+                    'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800&h=600&fit=crop&crop=center'  # Generic farm
+                )
+            )
+            
+            # Return placeholder image with descriptive information
+            return [{
+                'id': 'placeholder_1',
+                'image': placeholder_url,
+                'name': f'Representative {crop_name.title()} Farm'
+            }]
+            
+        except Exception as e:
+            # Fallback to a generic agriculture image if everything fails
+            return [{
+                'id': 'fallback_1',
+                'image': 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=800&h=600&fit=crop&crop=center',
+                'name': 'Sustainable Agriculture'
+            }]
     
     def _get_similar_products(self, production):
         """Get similar products from the same company (matching history API logic)"""
@@ -4371,6 +4457,186 @@ def get_education_content(request, topic):
         education_service = EducationalContentService()
         
         # Route to appropriate content based on topic
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+        if topic == 'usda-methodology':
+            content = education_service.get_usda_methodology_content(user_level)
+        elif topic == 'carbon-scoring':
+            content = education_service.get_carbon_scoring_content(user_level, context_data)
+        elif topic == 'regional-benchmarks':
+            content = education_service.get_regional_benchmarks_content(user_level, context_data)
+        elif topic == 'trust-indicators':
+            content = education_service.get_trust_indicators_content(user_level, context_data)
+        elif topic == 'farming-practices':
+            content = education_service.get_farming_practices_content(user_level, context_data)
+        elif topic == 'carbon-examples':
+            content = education_service.get_carbon_examples_content(user_level, context_data)
+        elif topic == 'verification-process':
+            content = education_service.get_verification_process_content(user_level, context_data)
+        elif topic == 'sustainability-metrics':
+            content = education_service.get_sustainability_metrics_content(user_level, context_data)
+        else:
+            return Response(
+                {'error': f'Unknown educational topic: {topic}'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        return Response(content, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error getting educational content for topic {topic}: {str(e)}")
+        return Response(
+            {'error': 'Unable to load educational content'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
         if topic == 'usda-methodology':
             content = education_service.get_usda_methodology_content(user_level)
         elif topic == 'carbon-scoring':

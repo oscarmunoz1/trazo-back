@@ -30,16 +30,20 @@ class BlockchainCarbonService:
     """
     
     def __init__(self):
-        # Initialize Web3 connection for Polygon Amoy Testnet
+        # Initialize Web3 connection for Polygon (environment-specific)
         self.web3 = None
         self.contract = None
         self.account = None
         self.mock_mode = not WEB3_AVAILABLE
+        self.network_name = getattr(settings, 'BLOCKCHAIN_NETWORK_NAME', 'polygon_amoy')
+        self.explorer_url = getattr(settings, 'POLYGON_EXPLORER_URL', 'https://amoy.polygonscan.com')
         
-        if WEB3_AVAILABLE and hasattr(settings, 'POLYGON_RPC_URL') and settings.POLYGON_RPC_URL:
+        if WEB3_AVAILABLE and getattr(settings, 'BLOCKCHAIN_ENABLED', False) and hasattr(settings, 'POLYGON_RPC_URL') and settings.POLYGON_RPC_URL:
             try:
                 self.web3 = Web3(Web3.HTTPProvider(settings.POLYGON_RPC_URL))
-                print(f"Connected to Polygon Amoy: {self.web3.isConnected()}")
+                
+                if self.web3.is_connected():
+                    print(f"✅ Connected to {self.network_name}: {settings.POLYGON_RPC_URL}")
                 
                 if hasattr(settings, 'CARBON_CONTRACT_ADDRESS') and settings.CARBON_CONTRACT_ADDRESS:
                     # Try to load ABI from the contracts file first
@@ -51,19 +55,28 @@ class BlockchainCarbonService:
                         address=settings.CARBON_CONTRACT_ADDRESS,
                         abi=contract_abi
                     )
-                    print(f"Contract loaded at: {settings.CARBON_CONTRACT_ADDRESS}")
+                    print(f"✅ Contract loaded at: {settings.CARBON_CONTRACT_ADDRESS}")
                     
                 if hasattr(settings, 'BLOCKCHAIN_PRIVATE_KEY') and settings.BLOCKCHAIN_PRIVATE_KEY:
                     self.account = self.web3.eth.account.from_key(settings.BLOCKCHAIN_PRIVATE_KEY)
-                    print(f"Wallet connected: {self.account.address}")
+                    print(f"✅ Wallet connected: {self.account.address}")
                     
-                self.mock_mode = False
+                    self.mock_mode = False
+                else:
+                    print(f"❌ Failed to connect to {self.network_name}")
+                    self.mock_mode = True
+                    
             except Exception as e:
-                print(f"Blockchain connection failed: {e}")
+                print(f"❌ Blockchain connection failed: {e}")
                 self.mock_mode = True
         else:
             self.mock_mode = True
-            print("Running in mock mode - no blockchain connection")
+            if not WEB3_AVAILABLE:
+                print("⚠️  Web3 library not available - running in mock mode")
+            elif not getattr(settings, 'BLOCKCHAIN_ENABLED', False):
+                print("⚠️  Blockchain disabled in settings - running in mock mode")
+            else:
+                print("⚠️  No blockchain configuration - running in mock mode")
     
     def _load_contract_abi(self) -> Optional[list]:
         """
@@ -238,9 +251,9 @@ class BlockchainCarbonService:
                 'record_hash': record_hash,
                 'block_number': receipt['blockNumber'],
                 'gas_used': receipt['gasUsed'],
-                'verification_url': f'https://amoy.polygonscan.com/tx/{tx_hash.hex()}',
+                'verification_url': f'{self.explorer_url}/tx/{tx_hash.hex()}',
                 'blockchain_verified': True,
-                'network': 'polygon_amoy',
+                'network': self.network_name,
                 'contract_address': self.contract.address
             }
             
@@ -257,9 +270,9 @@ class BlockchainCarbonService:
             'record_hash': record_hash,
             'block_number': 12345 + production_id,  # Mock block number
             'gas_used': 150000,
-            'verification_url': f'https://amoy.polygonscan.com/tx/0x{mock_tx_hash}',
+            'verification_url': f'{self.explorer_url}/tx/0x{mock_tx_hash}',
             'blockchain_verified': True,
-            'network': 'polygon_amoy_mock',
+            'network': f'{self.network_name}_mock',
             'contract_address': '0x' + '0' * 40,  # Mock contract address
             'mock_data': True  # Flag to indicate this is mock data
         }
