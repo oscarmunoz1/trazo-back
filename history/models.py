@@ -59,6 +59,12 @@ class History(models.Model):
     operator = models.ForeignKey(
         "users.User", on_delete=models.SET_NULL, blank=True, null=True, related_name="productions_operated"
     )
+    
+    # Crop type for this production (migrated from Parcel)
+    crop_type = models.ForeignKey(
+        "carbon.CropType", on_delete=models.SET_NULL, blank=True, null=True, 
+        related_name="productions", help_text="Crop type for this production"
+    )
 
     def __str__(self) -> str:
         return (

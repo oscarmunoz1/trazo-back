@@ -7,6 +7,311 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 from datetime import timedelta
 
+# Database-driven Crop Template System
+
+class CropType(models.Model):
+    """Model for different crop types with their characteristics"""
+    
+    CATEGORY_CHOICES = [
+        ('tree_fruit', 'Tree Fruit'),
+        ('tree_nut', 'Tree Nut'),
+        ('grain', 'Grain'),
+        ('oilseed', 'Oilseed'),
+        ('vegetable', 'Vegetable'),
+        ('herb', 'Herb'),
+        ('legume', 'Legume'),
+        ('other', 'Other'),
+    ]
+    
+    name = models.CharField(max_length=100, unique=True, help_text='e.g., Citrus (Oranges)')
+    slug = models.SlugField(max_length=100, unique=True, help_text='e.g., citrus_oranges')
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+    description = models.TextField(help_text='Brief description of the crop type')
+    
+    # Agricultural characteristics
+    typical_farm_size = models.CharField(max_length=100, help_text='e.g., 20-100 hectares')
+    growing_season = models.CharField(max_length=100, help_text='e.g., 12 months (evergreen)')
+    harvest_season = models.CharField(max_length=100, help_text='e.g., November - April')
+    
+    # USDA benchmarks and carbon data
+    emissions_per_hectare = models.FloatField(help_text='kg CO2e per hectare')
+    industry_average = models.FloatField(help_text='Industry average emissions')
+    best_practice = models.FloatField(help_text='Best practice emissions')
+    carbon_credit_potential = models.FloatField(help_text='Potential carbon credits per hectare')
+    
+    # Economic data
+    typical_cost_per_hectare = models.FloatField(help_text='Total production cost per hectare')
+    fertilizer_cost_per_hectare = models.FloatField(default=0.0)
+    fuel_cost_per_hectare = models.FloatField(default=0.0)
+    irrigation_cost_per_hectare = models.FloatField(default=0.0)
+    labor_cost_per_hectare = models.FloatField(default=0.0)
+    
+    # Premium pricing potential
+    organic_premium = models.CharField(max_length=20, default='0%', help_text='e.g., 25-40%')
+    sustainable_premium = models.CharField(max_length=20, default='0%', help_text='e.g., 10-20%')
+    local_premium = models.CharField(max_length=20, default='0%', help_text='e.g., 5-15%')
+    
+    # Sustainability opportunities
+    sustainability_opportunities = models.JSONField(default=list, help_text='List of sustainability practices')
+    
+    # Meta information
+    usda_verified = models.BooleanField(default=False)
+    data_source = models.CharField(max_length=200, default='USDA Agricultural Research Service')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'carbon_crop_type'
+        ordering = ['name']
+        verbose_name = 'Crop Type'
+        verbose_name_plural = 'Crop Types'
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def total_templates_count(self):
+        """Count of associated production templates"""
+        return self.production_templates.count()
+    
+    @property
+    def total_events_count(self):
+        """Count of associated event templates across all production templates"""
+        return EventTemplate.objects.filter(production_template__crop_type=self).count()
+    
+    @property
+    def carbon_benchmark_range(self):
+        """Formatted carbon benchmark range"""
+        return f"{self.best_practice}-{self.emissions_per_hectare} kg CO2e/ha"
+
+
+class ProductionTemplate(models.Model):
+    """Model for different production approaches per crop type (e.g., Conventional, Organic, Precision)"""
+    
+    FARMING_APPROACH_CHOICES = [
+        ('conventional', 'Conventional'),
+        ('organic', 'Organic'),
+        ('precision', 'Precision Agriculture'),
+        ('regenerative', 'Regenerative'),
+        ('sustainable', 'Sustainable'),
+        ('integrated', 'Integrated Pest Management'),
+        ('no_till', 'No-Till'),
+        ('cover_crop', 'Cover Crop System'),
+    ]
+    
+    COMPLEXITY_CHOICES = [
+        ('beginner', 'Beginner Friendly'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+        ('expert', 'Expert Level'),
+    ]
+    
+    crop_type = models.ForeignKey(CropType, on_delete=models.CASCADE, related_name='production_templates')
+    name = models.CharField(max_length=100, help_text='e.g., Citrus Organic Production')
+    slug = models.SlugField(max_length=100, help_text='e.g., citrus_organic')
+    farming_approach = models.CharField(max_length=20, choices=FARMING_APPROACH_CHOICES)
+    description = models.TextField(help_text='Detailed description of this production approach')
+    
+    # Template characteristics
+    complexity_level = models.CharField(max_length=15, choices=COMPLEXITY_CHOICES, default='intermediate')
+    estimated_setup_time = models.IntegerField(help_text='Setup time in minutes', default=8)
+    
+    # Carbon and economic projections
+    projected_emissions_reduction = models.FloatField(default=0.0, help_text='% reduction vs conventional')
+    projected_cost_change = models.FloatField(default=0.0, help_text='% cost change vs conventional')
+    projected_yield_impact = models.FloatField(default=0.0, help_text='% yield change vs conventional')
+    
+    # Premium pricing and market data
+    premium_pricing_potential = models.CharField(max_length=20, default='0%', help_text='e.g., 25-40%')
+    market_demand = models.CharField(max_length=20, choices=[
+        ('low', 'Low Demand'),
+        ('medium', 'Medium Demand'),
+        ('high', 'High Demand'),
+        ('very_high', 'Very High Demand'),
+    ], default='medium')
+    
+    # Certification and compliance
+    certification_requirements = models.JSONField(default=list, help_text='Required certifications')
+    compliance_notes = models.TextField(blank=True, help_text='USDA compliance and regulatory notes')
+    
+    # Template metadata
+    is_active = models.BooleanField(default=True)
+    is_recommended = models.BooleanField(default=False, help_text='Recommended template for this crop')
+    usage_count = models.IntegerField(default=0, help_text='How many times this template has been used')
+    success_rate = models.FloatField(default=0.0, help_text='Success rate based on user feedback')
+    
+    # USDA verification
+    usda_reviewed = models.BooleanField(default=False, help_text='Template reviewed against USDA practices')
+    usda_compliant = models.BooleanField(default=True, help_text='Meets USDA agricultural standards')
+    last_updated = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'carbon_production_template'
+        ordering = ['crop_type', 'farming_approach', 'name']
+        verbose_name = 'Production Template'
+        verbose_name_plural = 'Production Templates'
+        unique_together = ('crop_type', 'slug')
+    
+    def __str__(self):
+        return f"{self.crop_type.name} - {self.name}"
+    
+    def increment_usage(self):
+        """Increment usage counter"""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count'])
+    
+    @property
+    def events_count(self):
+        """Count of events in this template"""
+        return self.event_templates.count()
+    
+    @property
+    def total_carbon_impact(self):
+        """Calculate total carbon impact of all events in template"""
+        return self.event_templates.aggregate(
+            total=models.Sum('carbon_impact')
+        )['total'] or 0
+    
+    @property
+    def total_cost_estimate(self):
+        """Calculate total cost estimate of all events in template"""
+        return self.event_templates.aggregate(
+            total=models.Sum('cost_estimate')
+        )['total'] or 0
+
+
+class EventTemplate(models.Model):
+    """Model for event templates associated with production templates"""
+    
+    EVENT_TYPE_CHOICES = [
+        ('fertilization', 'Fertilization'),
+        ('irrigation', 'Irrigation'),
+        ('pest_control', 'Pest Control'),
+        ('pruning', 'Pruning'),
+        ('planting', 'Planting'),
+        ('harvest', 'Harvest'),
+        ('soil_management', 'Soil Management'),
+        ('equipment', 'Equipment Operation'),
+        ('weather_protection', 'Weather Protection'),
+        ('certification', 'Certification Activity'),
+        ('monitoring', 'Monitoring & Testing'),
+        ('other', 'Other'),
+    ]
+    
+    FREQUENCY_CHOICES = [
+        ('annual', 'Annual'),
+        ('seasonal', 'Seasonal'),
+        ('monthly', 'Monthly'),
+        ('weekly', 'Weekly'),
+        ('as_needed', 'As Needed'),
+        ('natural', 'Natural Process'),
+        ('one_time', 'One Time Setup'),
+    ]
+    
+    CARBON_CATEGORY_CHOICES = [
+        ('high', 'High Impact (>100 kg CO2e)'),
+        ('medium', 'Medium Impact (25-100 kg CO2e)'),
+        ('low', 'Low Impact (<25 kg CO2e)'),
+        ('negative', 'Negative Impact (Carbon Sequestration)'),
+        ('neutral', 'Carbon Neutral'),
+    ]
+    
+    QR_VISIBILITY_CHOICES = [
+        ('high', 'High - Prominent display to consumers'),
+        ('medium', 'Medium - Standard visibility'),
+        ('low', 'Low - Technical information'),
+        ('hidden', 'Hidden - Internal use only'),
+    ]
+    
+    # Temporary: Keep both fields during migration
+    crop_type = models.ForeignKey(CropType, on_delete=models.CASCADE, related_name='old_event_templates', null=True, blank=True)
+    production_template = models.ForeignKey(ProductionTemplate, on_delete=models.CASCADE, related_name='event_templates', null=True, blank=True)
+    name = models.CharField(max_length=100, help_text='e.g., Winter Pruning')
+    event_type = models.CharField(max_length=20, choices=EVENT_TYPE_CHOICES)
+    description = models.TextField(help_text='Detailed description of the event')
+    
+    # Timing and scheduling
+    timing = models.CharField(max_length=100, help_text='e.g., December - February')
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES)
+    typical_duration = models.CharField(max_length=50, help_text='e.g., 2-3 hours')
+    order_sequence = models.IntegerField(default=0, help_text='Order in which this event typically occurs')
+    
+    # Carbon and environmental impact
+    carbon_impact = models.FloatField(help_text='kg CO2e impact (negative for sequestration)')
+    carbon_category = models.CharField(max_length=10, choices=CARBON_CATEGORY_CHOICES)
+    carbon_sources = models.JSONField(default=list, help_text='List of carbon sources')
+    typical_amounts = models.JSONField(default=dict, help_text='Typical amounts used')
+    
+    # Economic impact
+    cost_estimate = models.FloatField(help_text='Estimated cost per hectare')
+    labor_hours = models.FloatField(default=0.0, help_text='Estimated labor hours per hectare')
+    
+    # Sustainability and efficiency
+    efficiency_tips = models.TextField(help_text='Tips for reducing environmental impact')
+    sustainability_score = models.IntegerField(default=5, validators=[MinValueValidator(1), MaxValueValidator(10)])
+    alternative_methods = models.JSONField(default=list, help_text='Alternative methods for this event')
+    
+    # Consumer visibility
+    qr_visibility = models.CharField(max_length=10, choices=QR_VISIBILITY_CHOICES, default='medium')
+    consumer_message = models.CharField(max_length=200, blank=True, help_text='Message shown to consumers')
+    
+    # Backend event mapping
+    backend_event_type = models.IntegerField(help_text='Maps to backend event model: 0=Weather, 1=Chemical, 2=Production, 3=General, 4=Equipment, 5=Soil, 6=Pest')
+    backend_event_fields = models.JSONField(default=dict, help_text='Default field values for backend event creation')
+    
+    # USDA compliance and verification
+    usda_practice_code = models.CharField(max_length=10, blank=True, help_text='USDA NRCS practice code if applicable')
+    usda_compliant = models.BooleanField(default=True, help_text='Meets USDA standards')
+    emission_factor_source = models.CharField(max_length=200, default='USDA Agricultural Research Service')
+    
+    # Meta information
+    is_active = models.BooleanField(default=True)
+    is_default_enabled = models.BooleanField(default=True, help_text='Enabled by default in production creation')
+    is_required = models.BooleanField(default=False, help_text='Required event that cannot be disabled')
+    usage_count = models.IntegerField(default=0, help_text='Track how often this template is used')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'carbon_event_template'
+        ordering = ['production_template', 'order_sequence', 'timing', 'name']
+        verbose_name = 'Event Template'
+        verbose_name_plural = 'Event Templates'
+        unique_together = ('production_template', 'name')
+    
+    def __str__(self):
+        return f"{self.production_template.name} - {self.name}"
+    
+    def increment_usage(self):
+        """Increment usage counter"""
+        self.usage_count += 1
+        self.save(update_fields=['usage_count'])
+    
+    @property
+    def crop_type(self):
+        """Get crop type through production template"""
+        return self.production_template.crop_type
+    
+    @property
+    def formatted_carbon_impact(self):
+        """Format carbon impact for display"""
+        if self.carbon_impact < 0:
+            return f"-{abs(self.carbon_impact)} kg CO₂ (sequestration)"
+        return f"{self.carbon_impact} kg CO₂"
+    
+    @property
+    def carbon_impact_color(self):
+        """Color for carbon impact display"""
+        if self.carbon_category == 'negative':
+            return 'green'
+        elif self.carbon_category == 'high':
+            return 'red'
+        elif self.carbon_category == 'medium':
+            return 'orange'
+        return 'blue'
+
 # Create your models here.
 
 class CarbonSource(models.Model):

@@ -129,7 +129,10 @@ class ChemicalEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, chemical_event):
-        return f"event.chemical.{chemical_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = chemical_event.get_type_display()
+        if type_display is None:
+            return "event.chemical.unknown"
+        return f"event.chemical.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, chemical_event):
         return CHEMICAL_EVENT_TYPE
@@ -225,7 +228,10 @@ class WeatherEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, weather_event):
-        return f"event.weather.{weather_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = weather_event.get_type_display()
+        if type_display is None:
+            return "event.weather.unknown"
+        return f"event.weather.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, weather_event):
         return WEATHER_EVENT_TYPE
@@ -246,7 +252,10 @@ class ProductionEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, production_event):
-        return f"event.production.{production_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = production_event.get_type_display()
+        if type_display is None:
+            return "event.production.unknown"
+        return f"event.production.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, production_event):
         return PRODUCTION_EVENT_TYPE
@@ -527,7 +536,10 @@ class EquipmentEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, equipment_event):
-        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = equipment_event.get_type_display()
+        if type_display is None:
+            return "event.equipment.unknown"
+        return f"event.equipment.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, equipment_event):
         return EQUIPMENT_EVENT_TYPE
@@ -549,7 +561,10 @@ class SoilManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, soil_event):
-        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = soil_event.get_type_display()
+        if type_display is None:
+            return "event.soil.unknown"
+        return f"event.soil.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, soil_event):
         return SOIL_MANAGEMENT_EVENT_TYPE
@@ -571,7 +586,10 @@ class PestManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, pest_event):
-        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = pest_event.get_type_display()
+        if type_display is None:
+            return "event.pest.unknown"
+        return f"event.pest.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, pest_event):
         return PEST_MANAGEMENT_EVENT_TYPE
@@ -600,7 +618,10 @@ class EquipmentEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, equipment_event):
-        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = equipment_event.get_type_display()
+        if type_display is None:
+            return "event.equipment.unknown"
+        return f"event.equipment.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, equipment_event):
         return EQUIPMENT_EVENT_TYPE
@@ -622,7 +643,10 @@ class SoilManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, soil_event):
-        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = soil_event.get_type_display()
+        if type_display is None:
+            return "event.soil.unknown"
+        return f"event.soil.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, soil_event):
         return SOIL_MANAGEMENT_EVENT_TYPE
@@ -644,7 +668,10 @@ class PestManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, pest_event):
-        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = pest_event.get_type_display()
+        if type_display is None:
+            return "event.pest.unknown"
+        return f"event.pest.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, pest_event):
         return PEST_MANAGEMENT_EVENT_TYPE
@@ -673,7 +700,10 @@ class EquipmentEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, equipment_event):
-        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = equipment_event.get_type_display()
+        if type_display is None:
+            return "event.equipment.unknown"
+        return f"event.equipment.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, equipment_event):
         return EQUIPMENT_EVENT_TYPE
@@ -695,7 +725,10 @@ class SoilManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, soil_event):
-        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = soil_event.get_type_display()
+        if type_display is None:
+            return "event.soil.unknown"
+        return f"event.soil.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, soil_event):
         return SOIL_MANAGEMENT_EVENT_TYPE
@@ -717,7 +750,10 @@ class PestManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, pest_event):
-        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = pest_event.get_type_display()
+        if type_display is None:
+            return "event.pest.unknown"
+        return f"event.pest.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, pest_event):
         return PEST_MANAGEMENT_EVENT_TYPE
@@ -746,7 +782,10 @@ class EquipmentEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, equipment_event):
-        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = equipment_event.get_type_display()
+        if type_display is None:
+            return "event.equipment.unknown"
+        return f"event.equipment.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, equipment_event):
         return EQUIPMENT_EVENT_TYPE
@@ -768,7 +807,10 @@ class SoilManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, soil_event):
-        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = soil_event.get_type_display()
+        if type_display is None:
+            return "event.soil.unknown"
+        return f"event.soil.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, soil_event):
         return SOIL_MANAGEMENT_EVENT_TYPE
@@ -790,7 +832,10 @@ class PestManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, pest_event):
-        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = pest_event.get_type_display()
+        if type_display is None:
+            return "event.pest.unknown"
+        return f"event.pest.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, pest_event):
         return PEST_MANAGEMENT_EVENT_TYPE
@@ -819,7 +864,10 @@ class EquipmentEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, equipment_event):
-        return f"event.equipment.{equipment_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = equipment_event.get_type_display()
+        if type_display is None:
+            return "event.equipment.unknown"
+        return f"event.equipment.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, equipment_event):
         return EQUIPMENT_EVENT_TYPE
@@ -841,7 +889,10 @@ class SoilManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, soil_event):
-        return f"event.soil.{soil_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = soil_event.get_type_display()
+        if type_display is None:
+            return "event.soil.unknown"
+        return f"event.soil.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, soil_event):
         return SOIL_MANAGEMENT_EVENT_TYPE
@@ -863,7 +914,10 @@ class PestManagementEventSerializer(EventSerializer):
         fields = "__all__"
 
     def get_type(self, pest_event):
-        return f"event.pest.{pest_event.get_type_display().lower().replace(' ', '_')}"
+        type_display = pest_event.get_type_display()
+        if type_display is None:
+            return "event.pest.unknown"
+        return f"event.pest.{type_display.lower().replace(' ', '_')}"
 
     def get_event_type(self, pest_event):
         return PEST_MANAGEMENT_EVENT_TYPE

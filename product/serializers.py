@@ -24,7 +24,6 @@ class ParcelBasicSerializer(ModelSerializer):
             "image",
             "has_current_production",
             "members",
-            "crop_type",
             "soil_type",
             "unique_code",
             "certification_type",

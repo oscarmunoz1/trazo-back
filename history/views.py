@@ -176,9 +176,19 @@ class HistoryViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_404_NOT_FOUND
                 )
             
+            # Get crop type from database
+            crop_type_id = data['crop_type']
+            try:
+                from carbon.models import CropType
+                crop_type = CropType.objects.get(id=crop_type_id)
+            except CropType.DoesNotExist:
+                return Response(
+                    {'error': 'Invalid crop type'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             # Create or get product based on crop type
-            crop_type = data['crop_type']
-            product, created = Product.objects.get_or_create(name=crop_type)
+            product, created = Product.objects.get_or_create(name=crop_type.name)
             
             # Parse dates with timezone awareness
             start_date_str = data['start_date'].replace('Z', '+00:00')
@@ -195,7 +205,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
             
             # Create production with enhanced data
             extra_data = {
-                'crop_category': self._categorize_crop(crop_type),
+                'crop_category': self._categorize_crop(crop_type.name),
                 'production_method': data.get('production_method', 'conventional'),
                 'estimated_yield': data.get('estimated_yield'),
                 'irrigation_method': data.get('irrigation_method'),
@@ -215,6 +225,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
                 finish_date=expected_harvest,
                 parcel=parcel,
                 product=product,
+                crop_type=crop_type,  # Assign the CropType instance
                 extra_data=extra_data,
                 type=data.get('type', 'OR'),  # Default to Orchard
                 description=data.get('description', ''),
@@ -237,7 +248,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
                     'production_id': history.id,
                     'total_emissions': 0.0,
                     'total_offsets': 0.0,
-                    'crop_type': crop_type,
+                    'crop_type': crop_type.name,
                     'calculation_method': 'initial_production_setup',
                     'usda_verified': False,
                     'timestamp': int(start_date.timestamp()),

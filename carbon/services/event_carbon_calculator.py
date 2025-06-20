@@ -504,6 +504,7 @@ class EventCarbonCalculator:
         try:
             base_emissions = 0.0  # Often negative for soil management
             sequestration = 0.0
+            area_hectares = 0.0  # Initialize area_hectares variable
             
             if event.type == 'OM':  # Organic Matter Addition
                 # Organic matter typically sequesters carbon
@@ -513,8 +514,8 @@ class EventCarbonCalculator:
                 
             elif event.type == 'CC':  # Cover Crop
                 # Cover crops sequester carbon
-                area = self._extract_numeric_value(event.area_covered or "1", default=1)
-                sequestration = area * 2.0  # Approximate 2 kg CO2e per hectare per season
+                area_hectares = self._convert_area_to_hectares(event.area_covered or "1")
+                sequestration = area_hectares * 2.0  # Approximate 2 kg CO2e per hectare per season
                 base_emissions = -sequestration
                 
             elif event.type == 'CO':  # Composting
@@ -524,11 +525,16 @@ class EventCarbonCalculator:
                 
             elif event.type == 'TI':  # Tillage
                 # Tillage releases stored carbon
-                area = self._extract_numeric_value(event.area_covered or "1", default=1)
-                base_emissions = area * 1.5  # Release stored carbon
+                area_hectares = self._convert_area_to_hectares(event.area_covered or "1")
+                base_emissions = area_hectares * 1.5  # Release stored carbon
                 
             elif event.type in ['ST', 'PA']:  # Soil Test, pH Adjustment
                 base_emissions = 0.1  # Minimal impact
+                area_hectares = self._convert_area_to_hectares(getattr(event, 'area', '1'))
+                
+            # If area_hectares is still 0, try to get it from event or default to 1
+            if area_hectares == 0.0:
+                area_hectares = self._convert_area_to_hectares(getattr(event, 'area', '1'))
                 
             recommendations = self._generate_soil_recommendations(event, base_emissions)
             

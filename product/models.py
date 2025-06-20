@@ -37,7 +37,7 @@ class Parcel(models.Model):
     )
     polygon = models.JSONField(blank=True, null=True)
     map_metadata = models.JSONField(blank=True, null=True)
-    crop_type = models.CharField(max_length=50, blank=True, null=True)
+    # crop_type removed - now stored in History model for per-production tracking
     soil_type = models.CharField(max_length=50, blank=True, null=True)
     unique_code = models.CharField(max_length=50, blank=True, null=True)
     certification_type = models.CharField(max_length=50, blank=True, null=True)

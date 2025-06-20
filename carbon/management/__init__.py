@@ -1,1 +1,1 @@
-# Management package for carbon app 
+# Management module for carbon app 

@@ -4,6 +4,9 @@ from . import views
 from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, AutomationRuleViewSet, BlockchainVerificationViewSet
 
 router = DefaultRouter()
+# Database-driven Crop Template System
+router.register(r'crop-types', views.CropTypeViewSet)
+router.register(r'event-templates', views.EventTemplateViewSet)
 router.register(r'sources', views.CarbonSourceViewSet)
 router.register(r'offset-actions', views.CarbonOffsetActionViewSet)
 router.register(r'entries', views.CarbonEntryViewSet)
