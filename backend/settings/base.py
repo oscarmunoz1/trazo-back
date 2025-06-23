@@ -222,6 +222,12 @@ COOLFARMTOOL_BASE_URL = config('COOLFARMTOOL_BASE_URL', default='https://api.coo
 COOLFARM_API_KEY = os.environ.get('COOLFARM_API_KEY', '')
 COOLFARM_API_URL = os.environ.get('COOLFARM_API_URL', 'https://api.coolfarmtool.org/v1')
 
+# OpenAI API Configuration for Voice Processing
+OPENAI_API_KEY = config('OPENAI_API_KEY', default='')
+OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-3.5-turbo')
+OPENAI_MAX_TOKENS = config('OPENAI_MAX_TOKENS', default=500, cast=int)
+OPENAI_TEMPERATURE = config('OPENAI_TEMPERATURE', default=0.3, cast=float)
+
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_HOST_USER = "apikey"
 EMAIL_HOST_PASSWORD = config("SENDGRID_API_KEY", default=None)
@@ -441,7 +447,17 @@ else:
 
 # Blockchain Contract Configuration
 CARBON_CONTRACT_ADDRESS = config("CARBON_CONTRACT_ADDRESS", default="")
+CARBON_CREDIT_CONTRACT_ADDRESS = config("CARBON_CREDIT_CONTRACT_ADDRESS", default="")  # NEW
 BLOCKCHAIN_PRIVATE_KEY = config("BLOCKCHAIN_PRIVATE_KEY", default="")
+
+# Production Blockchain Settings (NEW)
+BLOCKCHAIN_NETWORK_NAME = config("BLOCKCHAIN_NETWORK_NAME", default="polygon_amoy")
+POLYGON_EXPLORER_URL = config("POLYGON_EXPLORER_URL", default="https://amoy.polygonscan.com")
+
+# Gas Optimization Settings (NEW)
+BLOCKCHAIN_MAX_GAS_PRICE = config("BLOCKCHAIN_MAX_GAS_PRICE", default=100000000000, cast=int)  # 100 gwei max
+BLOCKCHAIN_BATCH_SIZE_LIMIT = config("BLOCKCHAIN_BATCH_SIZE_LIMIT", default=50, cast=int)
+BLOCKCHAIN_TIMEOUT_SECONDS = config("BLOCKCHAIN_TIMEOUT_SECONDS", default=180, cast=int)
 
 # Blockchain Feature Settings
 BLOCKCHAIN_ENABLED = config("BLOCKCHAIN_ENABLED", default=True, cast=bool)

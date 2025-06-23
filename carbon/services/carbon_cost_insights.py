@@ -23,31 +23,120 @@ class CarbonCostInsights:
         self.carbon_credit_rate = Decimal('25.00')  # $25/ton average market rate
         
     def get_carbon_economics(self, production_id: int) -> Dict[str, Any]:
-        """Get simple carbon economics for a production"""
+        """
+        OPTIMIZED: Get simple carbon economics for a production without triggering USDA API calls.
+        Uses cached carbon data from extra_data field instead of real-time calculations.
+        """
         try:
             production = History.objects.get(id=production_id)
             
-            # Simple carbon credit calculation
-            carbon_potential = self.calculate_carbon_credit_potential(production)
+            # Use cached carbon data from extra_data to avoid expensive calculations
+            cached_carbon_data = production.extra_data.get('carbon_summary', {}) if production.extra_data else {}
             
-            # Basic efficiency insights (only for carbon-heavy events)
-            efficiency_tips = self.get_carbon_efficiency_tips(production)
+            # Simple carbon credit calculation using cached data
+            carbon_potential = self.calculate_carbon_credit_potential_cached(production, cached_carbon_data)
             
-            # Premium pricing eligibility
-            premium_eligibility = self.check_premium_pricing_eligibility(production)
+            # Basic efficiency insights without triggering calculations
+            efficiency_tips = self.get_carbon_efficiency_tips_cached(production)
+            
+            # Premium pricing eligibility based on basic criteria
+            premium_eligibility = self.check_premium_pricing_eligibility_cached(production)
             
             return {
                 'carbon_credit_potential': carbon_potential,
                 'efficiency_tips': efficiency_tips,
                 'premium_eligibility': premium_eligibility,
-                'next_actions': self.get_next_carbon_actions(production),
-                'generated_at': timezone.now().isoformat()
+                'next_actions': self.get_next_carbon_actions_cached(production),
+                'generated_at': timezone.now().isoformat(),
+                'data_source': 'cached'  # Indicate this uses cached data
             }
             
         except History.DoesNotExist:
             return {'error': 'Production not found'}
         except Exception as e:
             return {'error': str(e)}
+    
+    def calculate_carbon_credit_potential_cached(self, production: History, cached_data: Dict) -> Dict[str, Any]:
+        """Calculate carbon credit potential using cached data to avoid USDA API calls"""
+        try:
+            # Use cached carbon score or calculate simple estimate
+            carbon_score = cached_data.get('carbon_score', 75)  # Default to 75 if no cached data
+            total_emissions = cached_data.get('total_emissions', 0)
+            total_offsets = cached_data.get('total_offsets', 0)
+            
+            # Simple credit calculation
+            net_emissions = total_emissions - total_offsets
+            credit_potential = max(0, total_offsets - total_emissions) / 1000  # Convert to tons
+            credit_value = credit_potential * float(self.carbon_credit_rate)
+            
+            return {
+                'potential_credits_tons': round(credit_potential, 2),
+                'estimated_value_usd': round(credit_value, 2),
+                'carbon_score': carbon_score,
+                'eligibility': 'eligible' if credit_potential > 0 else 'not_eligible',
+                'data_source': 'cached_summary'
+            }
+        except Exception:
+            return {
+                'potential_credits_tons': 0,
+                'estimated_value_usd': 0,
+                'carbon_score': 75,
+                'eligibility': 'unknown',
+                'data_source': 'fallback'
+            }
+    
+    def get_carbon_efficiency_tips_cached(self, production: History) -> List[str]:
+        """Get efficiency tips without triggering carbon calculations"""
+        tips = [
+            "Consider switching to precision fertilizer application to reduce nitrogen waste",
+            "Implement cover crops to improve soil carbon sequestration",
+            "Explore renewable energy options for irrigation and equipment"
+        ]
+        
+        # Add production-specific tips based on basic attributes
+        if production.is_outdoor:
+            tips.append("Outdoor production allows for natural pest control - consider reducing pesticide use")
+        
+        return tips[:3]  # Return top 3 tips
+    
+    def check_premium_pricing_eligibility_cached(self, production: History) -> Dict[str, Any]:
+        """Check premium pricing eligibility without expensive calculations"""
+        # Simple eligibility based on basic criteria
+        is_published = production.published
+        has_blockchain = bool(production.extra_data.get('blockchain_transaction')) if production.extra_data else False
+        
+        eligibility_score = 0
+        if is_published:
+            eligibility_score += 30
+        if has_blockchain:
+            eligibility_score += 40
+        if production.reputation > 4.0:
+            eligibility_score += 30
+        
+        return {
+            'eligible': eligibility_score >= 70,
+            'score': eligibility_score,
+            'criteria_met': {
+                'published': is_published,
+                'blockchain_verified': has_blockchain,
+                'high_reputation': production.reputation > 4.0
+            },
+            'premium_percentage': min(25, eligibility_score // 4) if eligibility_score >= 70 else 0
+        }
+    
+    def get_next_carbon_actions_cached(self, production: History) -> List[str]:
+        """Get next actions without triggering calculations"""
+        actions = []
+        
+        if not production.published:
+            actions.append("Publish production to enable carbon credit eligibility")
+        
+        if not production.extra_data.get('blockchain_transaction'):
+            actions.append("Enable blockchain verification for premium pricing")
+        
+        actions.append("Schedule carbon footprint assessment for next production cycle")
+        
+        return actions[:3]
     
     def calculate_carbon_credit_potential(self, production: History) -> Dict[str, Any]:
         """Simple carbon credit revenue estimation"""

@@ -453,7 +453,9 @@ class CarbonEntry(models.Model):
                 # Calculate ratio of offsets to emissions
                 offset_ratio = total_offsets / total_emissions if total_emissions > 0 else 0
                 # Scale from 1 to 50 (50 being carbon neutral)
-                return int(offset_ratio * 50)
+                # Ensure minimum score of 1 for positive emissions
+                score = int(offset_ratio * 50)
+                return max(1, score) if total_emissions > 0 else 50
 
 class CarbonCertification(models.Model):
     establishment = models.ForeignKey('company.Establishment', on_delete=models.CASCADE, null=True, blank=True)
@@ -863,44 +865,320 @@ class AutomationRule(models.Model):
         return f"{self.name} - {self.establishment.name}"
     
     def evaluate_trigger(self, data_point):
-        """Evaluate if this rule should trigger based on a data point."""
-        if not self.is_active:
-            return False
-        
-        # Implementation would depend on trigger_type and trigger_config
-        # This is a simplified example
-        if self.trigger_type == 'threshold':
-            field = self.trigger_config.get('field')
-            threshold = self.trigger_config.get('threshold')
-            operator = self.trigger_config.get('operator', 'gt')
+        """Evaluate if this rule should trigger based on the data point"""
+        try:
+            trigger_config = self.trigger_config
+            data = data_point.data
             
-            if field in data_point.data:
-                value = data_point.data[field]
+            if self.trigger_type == 'threshold':
+                field = trigger_config.get('field')
+                threshold = trigger_config.get('threshold')
+                operator = trigger_config.get('operator', 'gt')  # gt, lt, eq, gte, lte
+            
+                if field in data:
+                    value = data[field]
                 if operator == 'gt' and value > threshold:
                     return True
                 elif operator == 'lt' and value < threshold:
                     return True
                 elif operator == 'eq' and value == threshold:
                     return True
+                elif operator == 'gte' and value >= threshold:
+                    return True
+                elif operator == 'lte' and value <= threshold:
+                    return True
         
-        return False
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error evaluating automation rule {self.id}: {e}")
+            return False
     
     def execute_action(self, data_point):
-        """Execute the action defined by this rule."""
-        if self.action_type == 'create_event':
-            # Create a carbon entry based on the action config
-            event_config = self.action_config
-            CarbonEntry.objects.create(
-                establishment=self.establishment,
-                type=event_config.get('type', 'emission'),
-                source=event_config.get('source', f'Auto: {self.name}'),
-                amount=event_config.get('amount', 0),
-                year=timezone.now().year,
-                description=f'Auto-generated from rule: {self.name}',
-                created_by=self.created_by
-            )
+        """Execute the configured action"""
+        try:
+            if self.action_type == 'create_event':
+                # Create a carbon event based on the IoT data
+                # This would integrate with the event creation system
+                pass
+            elif self.action_type == 'send_alert':
+                # Send alert to relevant users
+                pass
+            # Add other action implementations
+            
+            # Update trigger tracking
+            self.last_triggered = timezone.now()
+            self.trigger_count += 1
+            self.save(update_fields=['last_triggered', 'trigger_count'])
         
-        # Update trigger statistics
-        self.last_triggered = timezone.now()
-        self.trigger_count += 1
-        self.save(update_fields=['last_triggered', 'trigger_count'])
+        except Exception as e:
+            logger.error(f"Error executing automation rule action {self.id}: {e}")
+
+
+# NEW MODELS FOR ENHANCED USDA INTEGRATION
+
+class USDAComplianceRecord(models.Model):
+    """Model for tracking USDA compliance validation results"""
+    
+    COMPLIANCE_STATUS_CHOICES = [
+        ('compliant', 'USDA Compliant'),
+        ('non_compliant', 'Non-Compliant'),
+        ('under_review', 'Under Review'),
+        ('pending_validation', 'Pending Validation'),
+        ('validation_error', 'Validation Error'),
+    ]
+    
+    CONFIDENCE_LEVEL_CHOICES = [
+        ('high', 'High (>90%)'),
+        ('medium', 'Medium (70-90%)'),
+        ('low', 'Low (<70%)'),
+    ]
+    
+    # Related records
+    carbon_entry = models.ForeignKey(CarbonEntry, on_delete=models.CASCADE, related_name='usda_compliance_records')
+    establishment = models.ForeignKey('company.Establishment', on_delete=models.CASCADE, null=True, blank=True)
+    production = models.ForeignKey('history.History', on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Compliance details
+    compliance_status = models.CharField(max_length=20, choices=COMPLIANCE_STATUS_CHOICES, default='pending_validation')
+    confidence_score = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(1.0)], help_text='Confidence score from 0.0 to 1.0')
+    confidence_level = models.CharField(max_length=10, choices=CONFIDENCE_LEVEL_CHOICES)
+    
+    # Validation details
+    validation_method = models.CharField(max_length=50, default='api_validation', help_text='Method used for validation')
+    validation_details = models.JSONField(default=dict, help_text='Detailed validation results')
+    recommendations = models.JSONField(default=list, help_text='USDA compliance recommendations')
+    
+    # API integration tracking
+    usda_api_used = models.BooleanField(default=False, help_text='Whether USDA API was used for validation')
+    api_response_code = models.IntegerField(null=True, blank=True, help_text='API response status code')
+    api_response_data = models.JSONField(default=dict, help_text='Full API response data')
+    
+    # Regional factors
+    crop_type = models.CharField(max_length=100, help_text='Crop type used in validation')
+    state = models.CharField(max_length=2, help_text='State code for regional factors')
+    regional_factors_used = models.BooleanField(default=False, help_text='Whether regional emission factors were used')
+    
+    # Metadata
+    validated_at = models.DateTimeField(auto_now_add=True)
+    validated_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Additional validation notes')
+    
+    # Audit trail
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'carbon_usda_compliance_record'
+        ordering = ['-validated_at']
+        indexes = [
+            models.Index(fields=['compliance_status']),
+            models.Index(fields=['confidence_level']),
+            models.Index(fields=['crop_type', 'state']),
+            models.Index(fields=['validated_at']),
+        ]
+    
+    def __str__(self):
+        return f"USDA Compliance - {self.carbon_entry} - {self.compliance_status}"
+    
+    def save(self, *args, **kwargs):
+        # Set confidence level based on score
+        if self.confidence_score >= 0.9:
+            self.confidence_level = 'high'
+        elif self.confidence_score >= 0.7:
+            self.confidence_level = 'medium'
+        else:
+            self.confidence_level = 'low'
+        
+        super().save(*args, **kwargs)
+    
+    @property
+    def is_usda_verified(self):
+        """Check if this record represents USDA verification"""
+        return self.compliance_status == 'compliant' and self.confidence_score >= 0.9
+    
+    @property
+    def needs_review(self):
+        """Check if this record needs manual review"""
+        return (self.compliance_status in ['non_compliant', 'validation_error'] or 
+                self.confidence_score < 0.7)
+
+
+class RegionalEmissionFactor(models.Model):
+    """Model for storing regional USDA emission factors"""
+    
+    FACTOR_TYPES = [
+        ('nitrogen', 'Nitrogen Fertilizer'),
+        ('phosphorus', 'Phosphorus Fertilizer'),
+        ('potassium', 'Potassium Fertilizer'),
+        ('diesel', 'Diesel Fuel'),
+        ('gasoline', 'Gasoline Fuel'),
+        ('natural_gas', 'Natural Gas'),
+        ('electricity', 'Electricity'),
+        ('lime', 'Agricultural Lime'),
+        ('custom', 'Custom Factor'),
+    ]
+    
+    DATA_SOURCE_CHOICES = [
+        ('usda_api', 'USDA API'),
+        ('usda_manual', 'USDA Manual Entry'),
+        ('regional_study', 'Regional Study'),
+        ('industry_average', 'Industry Average'),
+        ('estimated', 'Estimated Value'),
+    ]
+    
+    # Geographic scope
+    state = models.CharField(max_length=2, help_text='State code (e.g., CA, TX)')
+    county = models.CharField(max_length=100, blank=True, help_text='County name (optional)')
+    region = models.CharField(max_length=100, blank=True, help_text='Custom region identifier')
+    
+    # Crop and factor details
+    crop_type = models.CharField(max_length=100, help_text='Crop type this factor applies to')
+    factor_type = models.CharField(max_length=20, choices=FACTOR_TYPES)
+    factor_name = models.CharField(max_length=100, help_text='Human-readable factor name')
+    
+    # Emission factor values
+    emission_factor = models.FloatField(help_text='Emission factor value (kg CO2e per unit)')
+    unit = models.CharField(max_length=50, help_text='Unit of measurement (e.g., kg N, liter, kWh)')
+    adjustment_factor = models.FloatField(default=1.0, help_text='Regional adjustment multiplier')
+    
+    # Data quality and source
+    data_source = models.CharField(max_length=20, choices=DATA_SOURCE_CHOICES, default='estimated')
+    source_reference = models.CharField(max_length=500, blank=True, help_text='Reference to data source')
+    confidence_level = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(1.0)], default=0.8)
+    
+    # USDA verification
+    usda_verified = models.BooleanField(default=False, help_text='Verified by USDA data source')
+    usda_api_id = models.CharField(max_length=100, blank=True, help_text='USDA API identifier if applicable')
+    
+    # Temporal validity
+    valid_from = models.DateField(help_text='Date from which this factor is valid')
+    valid_until = models.DateField(null=True, blank=True, help_text='Date until which this factor is valid')
+    
+    # Usage tracking
+    usage_count = models.IntegerField(default=0, help_text='Number of times this factor has been used')
+    last_used = models.DateTimeField(null=True, blank=True, help_text='Last time this factor was used')
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Additional notes about this factor')
+    
+    class Meta:
+        db_table = 'carbon_regional_emission_factor'
+        ordering = ['state', 'crop_type', 'factor_type']
+        unique_together = ('state', 'crop_type', 'factor_type', 'valid_from')
+        indexes = [
+            models.Index(fields=['state', 'crop_type']),
+            models.Index(fields=['factor_type']),
+            models.Index(fields=['usda_verified']),
+            models.Index(fields=['valid_from', 'valid_until']),
+            models.Index(fields=['data_source']),
+        ]
+    
+    def __str__(self):
+        return f"{self.state} - {self.crop_type} - {self.factor_name}"
+    
+    def increment_usage(self):
+        """Increment usage counter and update last used timestamp"""
+        self.usage_count += 1
+        self.last_used = timezone.now()
+        self.save(update_fields=['usage_count', 'last_used'])
+    
+    @property
+    def is_current(self):
+        """Check if this factor is currently valid"""
+        today = timezone.now().date()
+        if self.valid_until:
+            return self.valid_from <= today <= self.valid_until
+        return self.valid_from <= today
+    
+    @property
+    def adjusted_emission_factor(self):
+        """Get the emission factor adjusted for regional conditions"""
+        return self.emission_factor * self.adjustment_factor
+    
+    @classmethod
+    def get_factor_for_region(cls, state: str, crop_type: str, factor_type: str, county: str = None):
+        """Get the most appropriate emission factor for a region"""
+        today = timezone.now().date()
+        
+        # Try to find exact match first
+        queryset = cls.objects.filter(
+            state=state,
+            crop_type__iexact=crop_type,
+            factor_type=factor_type,
+            valid_from__lte=today
+        ).filter(
+            models.Q(valid_until__gte=today) | models.Q(valid_until__isnull=True)
+        )
+        
+        # Prefer county-specific if available
+        if county:
+            county_specific = queryset.filter(county__iexact=county).first()
+            if county_specific:
+                return county_specific
+        
+        # Fallback to state-level
+        state_level = queryset.filter(county='').first()
+        if state_level:
+            return state_level
+        
+        # Return most recent if no exact match
+        return queryset.order_by('-valid_from').first()
+
+
+class USDACalculationAudit(models.Model):
+    """Model for auditing USDA calculation processes"""
+    
+    CALCULATION_TYPES = [
+        ('chemical_event', 'Chemical Event'),
+        ('production_event', 'Production Event'),
+        ('equipment_event', 'Equipment Event'),
+        ('soil_management', 'Soil Management'),
+        ('weather_event', 'Weather Event'),
+        ('pest_management', 'Pest Management'),
+        ('business_event', 'Business Event'),
+    ]
+    
+    # Event and calculation details
+    event_type = models.CharField(max_length=20, choices=CALCULATION_TYPES)
+    event_id = models.IntegerField(help_text='ID of the original event')
+    carbon_entry = models.ForeignKey(CarbonEntry, on_delete=models.CASCADE, related_name='usda_audit_logs')
+    
+    # Calculation inputs
+    input_data = models.JSONField(help_text='Original event data used in calculation')
+    regional_factors_used = models.JSONField(default=dict, help_text='Regional emission factors used')
+    calculation_method = models.CharField(max_length=100, help_text='Calculation method used')
+    
+    # USDA compliance tracking
+    usda_factors_applied = models.BooleanField(default=False)
+    regional_adjustments_applied = models.BooleanField(default=False)
+    api_data_used = models.BooleanField(default=False)
+    
+    # Results
+    calculated_co2e = models.FloatField(help_text='Calculated CO2e amount')
+    confidence_score = models.FloatField(validators=[MinValueValidator(0.0), MaxValueValidator(1.0)])
+    benchmark_comparison = models.JSONField(default=dict, help_text='Benchmark comparison results')
+    
+    # Processing metadata
+    calculation_time_ms = models.IntegerField(help_text='Time taken for calculation in milliseconds')
+    processor_version = models.CharField(max_length=50, default='1.0', help_text='Version of calculation engine used')
+    
+    # Audit trail
+    calculated_at = models.DateTimeField(auto_now_add=True)
+    calculated_by = models.ForeignKey('users.User', on_delete=models.SET_NULL, null=True, blank=True)
+    
+    class Meta:
+        db_table = 'carbon_usda_calculation_audit'
+        ordering = ['-calculated_at']
+        indexes = [
+            models.Index(fields=['event_type', 'event_id']),
+            models.Index(fields=['calculated_at']),
+            models.Index(fields=['usda_factors_applied']),
+            models.Index(fields=['confidence_score']),
+        ]
+    
+    def __str__(self):
+        return f"USDA Audit - {self.event_type} #{self.event_id} - {self.calculated_at}"

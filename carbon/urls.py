@@ -39,6 +39,21 @@ urlpatterns = [
     path('usda-credibility/<int:establishment_id>/', views.get_usda_credibility_info, name='usda-credibility'),
     path('regional-benchmark/<int:establishment_id>/', views.get_regional_benchmark, name='regional-benchmark'),
     
+    # NEW USDA API Endpoints (Month 1 Implementation)
+    path('usda/validate-compliance/', views.validate_usda_compliance, name='usda-validate-compliance'),
+    path('usda/regional-factors/<str:state>/', views.get_regional_emission_factors, name='usda-regional-factors'),
+    path('usda/benchmark-comparison/', views.get_usda_benchmark_comparison, name='usda-benchmark-comparison'),
+    path('usda/compliance-history/<int:production_id>/', views.get_usda_compliance_history, name='usda-compliance-history'),
+    path('voice/process-event/', views.process_voice_event, name='process-voice-event'),
+    path('process-voice-event/', views.process_voice_event_ai, name='process-voice-event-ai'),
+    # AI-powered smart event suggestions
+    path('ai-event-suggestions/', views.get_ai_event_suggestions, name='ai-event-suggestions'),
+    
+    # USDA Government Data Integration
+    path('usda/emission-factors/', views.get_real_usda_factors, name='get-usda-emission-factors'),
+    path('usda/nutritional-analysis/', views.get_nutritional_carbon_analysis, name='nutritional-carbon-analysis'),
+    path('usda/complete-analysis/', views.get_complete_usda_analysis, name='complete-usda-analysis'),
+    
     path('webhooks/john-deere/', views.john_deere_webhook, name='john_deere_webhook'),
     path('webhooks/weather-station/', views.weather_station_webhook, name='weather_station_webhook'),
     # IoT Device Management
@@ -76,4 +91,10 @@ urlpatterns = [
     path('education/trust-comparison/', views.get_trust_comparison_data, name='trust-comparison-data'),
     # Generic educational content endpoint
     path('education/<str:topic>/', views.get_education_content, name='education-content'),
+    # Production Blockchain endpoints (NEW)
+    path('blockchain/batch-verify/', views.batch_verify_productions, name='batch_verify_productions'),
+    path('blockchain/gas-analysis/', views.get_gas_optimization_analysis, name='gas_optimization_analysis'),
+    path('blockchain/mint-credits/', views.mint_carbon_credits_batch, name='mint_carbon_credits_batch'),
+    path('blockchain/service-stats/', views.get_blockchain_service_stats, name='blockchain_service_stats'),
+    path('blockchain/deploy-contract/', views.deploy_carbon_credit_contract, name='deploy_carbon_credit_contract'),
 ] 

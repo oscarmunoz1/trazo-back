@@ -107,15 +107,24 @@ def calculate_general_event_carbon(sender, instance, created, **kwargs):
             calculation_result = {
                 'co2e': 0.1,  # Minimal impact
                 'efficiency_score': 50.0,
-                'usda_verified': False,
+                'usda_factors_based': False,
+                'verification_status': 'estimated',
                 'calculation_method': 'general_event_standard',
-                'recommendations': []
+                'data_source': 'Industry Standards',
+                'recommendations': [],
+                'event_type': 'general',
+                'timestamp': instance.date.isoformat() if instance.date else None
             }
             
             # Only create carbon entry if the event might have actual impact
             impact_keywords = ['fuel', 'energy', 'transport', 'machinery', 'equipment']
-            if any(keyword in (instance.name + ' ' + instance.observation).lower() 
-                   for keyword in impact_keywords):
+            
+            # Safe string concatenation - handle None values
+            name_text = instance.name or ''
+            observation_text = instance.observation or ''
+            combined_text = (name_text + ' ' + observation_text).lower()
+            
+            if any(keyword in combined_text for keyword in impact_keywords):
                 carbon_entry = calculator.create_carbon_entry_from_event(instance, calculation_result)
                 
                 # Store calculation result
@@ -126,9 +135,20 @@ def calculate_general_event_carbon(sender, instance, created, **kwargs):
                 GeneralEvent.objects.filter(id=instance.id).update(extra_data=instance.extra_data)
                 
                 print(f"✅ Carbon calculation completed for General Event {instance.id}: {calculation_result['co2e']} kg CO2e")
+            else:
+                # Still store the calculation result even if no carbon entry is created
+                if not hasattr(instance, 'extra_data') or instance.extra_data is None:
+                    instance.extra_data = {}
+                
+                instance.extra_data['carbon_calculation'] = calculation_result
+                GeneralEvent.objects.filter(id=instance.id).update(extra_data=instance.extra_data)
+                
+                print(f"✅ General Event {instance.id} processed with minimal carbon impact: {calculation_result['co2e']} kg CO2e")
             
         except Exception as e:
             print(f"❌ Error calculating carbon for General Event {instance.id}: {e}")
+            import traceback
+            traceback.print_exc()
 
 
 @receiver(post_delete, sender=ChemicalEvent)

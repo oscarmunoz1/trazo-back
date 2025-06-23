@@ -8,6 +8,8 @@
     "test": "hardhat test",
     "deploy:amoy": "hardhat run scripts/deploy.js --network polygon-amoy",
     "deploy:mainnet": "hardhat run scripts/deploy.js --network polygon-mainnet",
+    "deploy:credit-amoy": "hardhat run scripts/deploy_carbon_credit.js --network polygon-amoy",
+    "deploy:credit-mainnet": "hardhat run scripts/deploy_carbon_credit.js --network polygon-mainnet",
     "deploy:local": "hardhat run scripts/deploy.js --network hardhat",
     "verify:amoy": "hardhat verify --network polygon-amoy",
     "clean": "hardhat clean",

@@ -146,6 +146,9 @@ class History(models.Model):
         return 0
 
     def finish(self, history_data, images):
+        from django.utils import timezone
+        from datetime import datetime
+        
         if images is not None:
             gallery = Gallery.objects.create()
             for image_data in images:
@@ -155,7 +158,18 @@ class History(models.Model):
             print(gallery.images.all())
             self.album = gallery
 
-        self.finish_date = history_data["finish_date"]
+        # Handle finish_date with timezone awareness
+        finish_date = history_data["finish_date"]
+        if isinstance(finish_date, str):
+            # Parse string datetime and make it timezone-aware
+            finish_date = datetime.fromisoformat(finish_date.replace('Z', '+00:00'))
+            if finish_date.tzinfo is None:
+                finish_date = timezone.make_aware(finish_date)
+        elif isinstance(finish_date, datetime) and finish_date.tzinfo is None:
+            # Make naive datetime timezone-aware
+            finish_date = timezone.make_aware(finish_date)
+        
+        self.finish_date = finish_date
         self.observation = history_data["observation"]
         self.published = True
         self.production_amount = history_data["production_amount"]
@@ -285,6 +299,7 @@ class ChemicalEvent(CommonEvent):
     way_of_application = models.CharField(max_length=60, blank=True, null=True)
     time_period = models.CharField(max_length=60, blank=True, null=True)
     observation = models.TextField(blank=True, null=True)
+    extra_data = models.JSONField(blank=True, null=True)
 
 
 class ProductionEvent(CommonEvent):
@@ -302,11 +317,13 @@ class ProductionEvent(CommonEvent):
 
     type = models.CharField(max_length=2, choices=PRODUCTION_EVENTS)
     observation = models.TextField(blank=True, null=True)
+    extra_data = models.JSONField(blank=True, null=True)
 
 
 class GeneralEvent(CommonEvent):
     name = models.CharField(max_length=90)
     observation = models.TextField(blank=True, null=True)
+    extra_data = models.JSONField(blank=True, null=True)
 
 
 class HistoryScan(models.Model):
@@ -354,6 +371,7 @@ class EquipmentEvent(CommonEvent):
     maintenance_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     hours_used = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     area_covered = models.CharField(max_length=100, blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
     
     class Meta:
         verbose_name = "Equipment Event"
@@ -389,6 +407,7 @@ class SoilManagementEvent(CommonEvent):
     amendment_amount = models.CharField(max_length=100, blank=True)
     test_results = models.JSONField(null=True, blank=True)  # Store complex test data
     carbon_sequestration_potential = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
     
     class Meta:
         verbose_name = "Soil Management Event"
@@ -426,6 +445,7 @@ class PestManagementEvent(CommonEvent):
     damage_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     action_threshold_met = models.BooleanField(default=False)
     ipm_strategy = models.TextField(blank=True)
+    extra_data = models.JSONField(blank=True, null=True)
     
     class Meta:
         verbose_name = "Pest Management Event"

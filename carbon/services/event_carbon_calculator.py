@@ -1,15 +1,19 @@
 from decimal import Decimal
 from django.utils import timezone
 from typing import Dict, Any, Optional, List
-from ..models import CarbonEntry, CarbonSource
-from .enhanced_usda_factors import EnhancedUSDAFactors
+from ..models import CarbonEntry, CarbonSource, USDAComplianceRecord, RegionalEmissionFactor, USDACalculationAudit
+from .enhanced_usda_factors import EnhancedUSDAFactors, USDAValidationResult
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EventCarbonCalculator:
     """
     Service for calculating carbon impact from agricultural events.
     Implements USDA emission factors and industry best practices.
-    Enhanced with regional USDA factors and benchmark comparisons.
+    Enhanced with regional USDA factors, real-time API integration, and compliance validation.
     """
 
     # USDA Emission Factors (kg CO2e per unit)
@@ -115,22 +119,183 @@ class EventCarbonCalculator:
     def _get_establishment_location(self, event) -> tuple:
         """Extract establishment location from event"""
         try:
-            if hasattr(event, 'history') and event.history and hasattr(event.history, 'establishment'):
-                establishment = event.history.establishment
+            # Correct path: event -> history -> parcel -> establishment
+            if (hasattr(event, 'history') and event.history and 
+                hasattr(event.history, 'parcel') and event.history.parcel and
+                hasattr(event.history.parcel, 'establishment') and event.history.parcel.establishment):
+                establishment = event.history.parcel.establishment
                 state = getattr(establishment, 'state', 'Unknown')
                 county = getattr(establishment, 'county', None)
                 return state, county
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error getting establishment location: {e}")
         return 'Unknown', None
+
+    def _get_real_time_usda_factors(self, crop_type: str, state: str) -> Dict[str, float]:
+        """NEW METHOD: Get real-time USDA emission factors"""
+        try:
+            # Try to get real-time factors first
+            real_time_factors = self.enhanced_usda.get_real_time_emission_factors(crop_type, state)
+            if real_time_factors:
+                logger.info(f"Using real-time USDA factors for {crop_type} in {state}")
+                return real_time_factors
+            
+            # Fallback to regional factors
+            return self.enhanced_usda.get_regional_factors(crop_type, state)
+            
+        except Exception as e:
+            logger.error(f"Error getting real-time USDA factors: {e}")
+            return self._get_usda_emission_factors()
+
+    def _calculate_confidence_score(self, event, calculation_data: Dict) -> float:
+        """NEW METHOD: Calculate confidence score for carbon calculation"""
+        try:
+            confidence_factors = []
+            
+            # Factor 1: Data completeness (0.0 - 0.3)
+            required_fields = ['crop_type', 'area', 'amount']
+            present_fields = sum(1 for field in required_fields if calculation_data.get(field))
+            completeness_score = (present_fields / len(required_fields)) * 0.3
+            confidence_factors.append(completeness_score)
+            
+            # Factor 2: USDA factor usage (0.0 - 0.4)
+            usda_factor_score = 0.4 if calculation_data.get('usda_factors_based', False) else 0.1
+            confidence_factors.append(usda_factor_score)
+            
+            # Factor 3: Regional specificity (0.0 - 0.2)
+            state, county = self._get_establishment_location(event)
+            regional_score = 0.2 if state != 'Unknown' else 0.0
+            if county:
+                regional_score += 0.05  # Bonus for county-level data
+            confidence_factors.append(min(regional_score, 0.2))
+            
+            # Factor 4: Method precision (0.0 - 0.1)
+            method_score = 0.1 if calculation_data.get('method') == 'detailed' else 0.05
+            confidence_factors.append(method_score)
+            
+            total_confidence = sum(confidence_factors)
+            return min(total_confidence, 1.0)
+            
+        except Exception as e:
+            logger.error(f"Error calculating confidence score: {e}")
+            return 0.5  # Default medium confidence
+
+    def _create_usda_compliance_record(self, carbon_entry: CarbonEntry, event, 
+                                     calculation_data: Dict, confidence_score: float) -> None:
+        """NEW METHOD: Create USDA compliance record"""
+        try:
+            state, county = self._get_establishment_location(event)
+            
+            # Extract crop type properly from event's history relationship
+            crop_type = 'unknown'
+            if hasattr(event, 'history') and event.history:
+                if hasattr(event.history, 'crop_type') and event.history.crop_type:
+                    # First try: get from history.crop_type.name (new model structure)
+                    crop_type = event.history.crop_type.name
+                elif hasattr(event.history, 'product') and event.history.product:
+                    # Fallback: get from history.product.name (legacy structure)
+                    crop_type = event.history.product.name
+                elif 'crop_name' in calculation_data:
+                    # Fallback: get from calculation_data if available
+                    crop_type = calculation_data['crop_name']
+            
+            # Log for debugging
+            logger.info(f"🌾 USDA Compliance - Crop type extracted: '{crop_type}' for event {event.id}")
+            
+            # Ensure state is a valid string and 2-character code (max_length=2 in model)
+            if not state or state == "Unknown" or not isinstance(state, str) or len(state) != 2:
+                state = "CA"  # Default to California for unknown states
+            
+            # Extract proper area from event
+            area_hectares = 1  # Default fallback
+            if hasattr(event, 'area') and event.area and event.area != 'None':
+                area_hectares = self._convert_area_to_hectares(event.area, event, crop_type)
+            elif hasattr(event, 'history') and event.history and hasattr(event.history, 'parcel') and event.history.parcel:
+                area_hectares = self._convert_area_to_hectares(event.history.parcel.area, event, crop_type)
+            
+            # Validate against USDA standards
+            validation_result = self.enhanced_usda.validate_against_usda_standards({
+                'crop_type': crop_type,
+                'state': state,
+                'co2e': calculation_data.get('co2e', 0),
+                'area_hectares': area_hectares,
+                'usda_factors_based': calculation_data.get('usda_factors_based', False),
+                'method': calculation_data.get('method', 'standard')
+            })
+            
+            # Create compliance record
+            USDAComplianceRecord.objects.create(
+                carbon_entry=carbon_entry,
+                establishment=getattr(event, 'history', None) and getattr(event.history, 'parcel', None) and getattr(event.history.parcel, 'establishment', None),
+                production=getattr(event, 'history', None),
+                compliance_status='compliant' if validation_result.is_compliant else 'non_compliant',
+                confidence_score=validation_result.confidence_score,
+                validation_method='enhanced_api' if self.enhanced_usda.usda_api_client.api_key else 'local_validation',
+                validation_details=validation_result.validation_details,
+                recommendations=validation_result.recommendations,
+                usda_api_used=bool(self.enhanced_usda.usda_api_client.api_key),
+                crop_type=crop_type,
+                state=state,
+                regional_factors_used=state in self.enhanced_usda.regional_adjustments,
+                validated_by=getattr(event, 'created_by', None)
+            )
+            
+            logger.info(f"Created USDA compliance record for carbon entry {carbon_entry.id}")
+            
+        except Exception as e:
+            logger.error(f"Error creating USDA compliance record: {e}")
+
+    def _create_calculation_audit(self, event, carbon_entry: CarbonEntry, 
+                                calculation_data: Dict, calculation_time_ms: int) -> None:
+        """NEW METHOD: Create calculation audit record"""
+        try:
+            event_type_mapping = {
+                'ChemicalEvent': 'chemical_event',
+                'ProductionEvent': 'production_event',
+                'EquipmentEvent': 'equipment_event',
+                'SoilManagementEvent': 'soil_management',
+                'WeatherEvent': 'weather_event',
+                'PestManagementEvent': 'pest_management',
+                'GeneralEvent': 'business_event',
+            }
+            
+            event_type = event_type_mapping.get(event.__class__.__name__, 'business_event')
+            state, county = self._get_establishment_location(event)
+            
+            USDACalculationAudit.objects.create(
+                event_type=event_type,
+                event_id=event.id,
+                carbon_entry=carbon_entry,
+                input_data=calculation_data.get('input_data', {}),
+                regional_factors_used=calculation_data.get('regional_factors', {}),
+                calculation_method=calculation_data.get('method', 'standard'),
+                usda_factors_applied=calculation_data.get('usda_factors_based', False),
+                regional_adjustments_applied=state in self.enhanced_usda.regional_adjustments,
+                api_data_used=bool(self.enhanced_usda.usda_api_client.api_key),
+                calculated_co2e=calculation_data.get('co2e', 0),
+                confidence_score=calculation_data.get('confidence_score', 0.5),
+                benchmark_comparison=calculation_data.get('usda_benchmark', {}),
+                calculation_time_ms=calculation_time_ms,
+                processor_version='2.0_enhanced',
+                calculated_by=getattr(event, 'created_by', None)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error creating calculation audit: {e}")
 
     def _add_enhanced_usda_metadata(self, result: Dict[str, Any], event, crop_name: str = "default") -> Dict[str, Any]:
         """Add enhanced USDA metadata to calculation results"""
+        start_time = time.time()
+        
         try:
             state, county = self._get_establishment_location(event)
             
             # Get enhanced metadata
             metadata = self.enhanced_usda.get_enhanced_calculation_metadata(crop_name, state)
+            
+            # Calculate confidence score
+            confidence_score = self._calculate_confidence_score(event, result)
+            result['confidence_score'] = confidence_score
             
             # Add to result
             result.update({
@@ -141,7 +306,9 @@ class EventCarbonCalculator:
                 'regional_specificity': metadata['regional_specificity'],
                 'confidence_level': metadata['confidence_level'],
                 'usda_compliance': metadata['usda_compliance'],
-                'regional_optimization': metadata.get('regional_optimization', False)
+                'regional_optimization': metadata.get('regional_optimization', False),
+                'real_time_data': metadata.get('real_time_data', False),
+                'api_integration': metadata.get('api_enabled', False)
             })
             
             # Add benchmark comparison if possible
@@ -155,15 +322,33 @@ class EventCarbonCalculator:
                     )
                     result['usda_benchmark'] = benchmark
             
+            # Store calculation metadata for audit
+            result['input_data'] = {
+                'event_type': event.__class__.__name__,
+                'event_id': event.id,
+                'crop_type': crop_name,
+                'state': state,
+                'county': county,
+            }
+            
+            # Get regional factors used
+            regional_factors = self._get_real_time_usda_factors(crop_name, state)
+            result['regional_factors'] = regional_factors
+            
+            calculation_time = int((time.time() - start_time) * 1000)  # Convert to milliseconds
+            result['calculation_time_ms'] = calculation_time
+            
             return result
             
         except Exception as e:
+            logger.error(f"Error adding enhanced USDA metadata: {e}")
             # Fallback to basic metadata
             result.update({
                 'usda_factors_based': True,
                 'verification_status': 'factors_verified',
                 'data_source': 'USDA Agricultural Research Service',
-                'confidence_level': 'medium'
+                'confidence_level': 'medium',
+                'confidence_score': 0.5
             })
             return result
 
@@ -218,18 +403,20 @@ class EventCarbonCalculator:
                 crop_name = event.history.product.name
                 crop_category = self._get_crop_category(crop_name)
             
-            # Parse nutrient content (NPK analysis)
-            npk_content = self._parse_npk_content(event.concentration or "")
+            # Parse nutrient content (NPK analysis) with intelligent defaults
+            concentration = self._get_intelligent_concentration(event.concentration, event, crop_name)
+            npk_content = self._parse_npk_content(concentration)
             
-            # Convert volume to standardized units (liters)
-            volume_liters = self._convert_volume_to_liters(event.volume or "0")
+            # Convert volume to standardized units (liters) with intelligent defaults
+            volume_liters = self._convert_volume_to_liters(event.volume, event, crop_name)
             
-            # Convert area to standardized units (hectares)
-            area_hectares = self._convert_area_to_hectares(event.area or "0")
+            # Convert area to standardized units (hectares) with intelligent defaults
+            area_hectares = self._convert_area_to_hectares(event.area, event, crop_name)
             
-            # Get application efficiency (crop-specific if available)
+            # Get application efficiency (crop-specific if available) with intelligent defaults
+            application_method = self._get_intelligent_application_method(event.way_of_application, event, crop_name)
             base_efficiency = self.APPLICATION_EFFICIENCY.get(
-                self._normalize_application_method(event.way_of_application or ""), 
+                self._normalize_application_method(application_method), 
                 0.7  # Default efficiency
             )
             
@@ -331,7 +518,16 @@ class EventCarbonCalculator:
             if event.type == 'IR':  # Irrigation
                 # Estimate based on water pumping energy
                 # Rough estimate: 0.5 kWh per m³ water, 0.4 kg CO2e per kWh
-                water_volume = self._extract_numeric_value(event.observation or "", default=100)  # m³
+                # Use intelligent defaults for irrigation volume
+                if hasattr(event, 'volume') and event.volume:
+                    water_volume = self._convert_volume_to_liters(event.volume, event, crop_name) / 1000  # Convert to m³
+                else:
+                    # Extract from observation or use intelligent defaults
+                    water_volume = self._extract_numeric_value(event.observation or "", default=0)
+                    if water_volume == 0:
+                        defaults = self._get_intelligent_defaults(event, crop_name)
+                        water_volume = defaults['volume'] / 10  # Convert liters to m³ estimate
+                
                 base_emissions = water_volume * 0.5 * 0.4  # Energy for pumping
                 
                 # Crop-specific water needs adjustment
@@ -662,6 +858,7 @@ class EventCarbonCalculator:
     def create_carbon_entry_from_event(self, event, calculation_result: Dict[str, Any]) -> Optional['CarbonEntry']:
         """
         Create a CarbonEntry from an event and its carbon calculation result.
+        Enhanced with USDA compliance tracking and audit logging.
         """
         try:
             from ..models import CarbonEntry
@@ -669,9 +866,15 @@ class EventCarbonCalculator:
             # Get or create carbon source
             carbon_source = self._get_or_create_carbon_source(event)
             
+            # Get establishment_id through the parcel relationship
+            establishment_id = None
+            if hasattr(event, 'history') and event.history:
+                if hasattr(event.history, 'parcel') and event.history.parcel:
+                    establishment_id = event.history.parcel.establishment.id
+            
             # Create carbon entry
             carbon_entry = CarbonEntry.objects.create(
-                establishment_id=getattr(event.history, 'establishment_id', None) if hasattr(event, 'history') else None,
+                establishment_id=establishment_id,
                 production_id=getattr(event.history, 'id', None) if hasattr(event, 'history') else None,
                 type='emission' if calculation_result.get('co2e', 0) > 0 else 'sequestration',
                 source=carbon_source,
@@ -684,10 +887,27 @@ class EventCarbonCalculator:
                 created_by=getattr(event, 'created_by', None) if hasattr(event, 'created_by') else None
             )
             
+            # Create USDA compliance record
+            confidence_score = calculation_result.get('confidence_score', 0.5)
+            self._create_usda_compliance_record(carbon_entry, event, calculation_result, confidence_score)
+            
+            # Update carbon entry USDA verification status based on compliance record
+            from ..models import USDAComplianceRecord
+            compliance_record = USDAComplianceRecord.objects.filter(carbon_entry=carbon_entry).first()
+            if compliance_record and compliance_record.is_usda_verified:
+                carbon_entry.usda_verified = True
+                carbon_entry.save(update_fields=['usda_verified'])
+                logger.info(f"✅ Updated carbon entry {carbon_entry.id} to usda_verified=True based on compliance record")
+            
+            # Create calculation audit record
+            calculation_time_ms = calculation_result.get('calculation_time_ms', 0)
+            self._create_calculation_audit(event, carbon_entry, calculation_result, calculation_time_ms)
+            
+            logger.info(f"Created carbon entry {carbon_entry.id} with USDA compliance tracking")
             return carbon_entry
             
         except Exception as e:
-            print(f"Error creating carbon entry from event: {e}")
+            logger.error(f"Error creating carbon entry from event: {e}")
             return None
 
     # Helper methods
@@ -720,11 +940,127 @@ class EventCarbonCalculator:
         except:
             return {'N': 10.0, 'P': 10.0, 'K': 10.0}
 
-    def _convert_volume_to_liters(self, volume_str: str) -> float:
-        """Convert volume string to liters"""
+    def _extract_numeric_value(self, text: str, default: float = 0.0) -> float:
+        """Extract first numeric value from text with intelligent fallbacks for 'Unknown' values"""
         try:
+            import re
+            
+            # Handle "Unknown" values with intelligent defaults
+            if text.lower() in ['unknown', 'n/a', 'na', '', 'none', 'null']:
+                return default
+            
+            numbers = re.findall(r'\d+(?:\.\d+)?', text)
+            return float(numbers[0]) if numbers else default
+        except:
+            return default
+
+    def _get_intelligent_defaults(self, event, crop_name: str = "default") -> Dict[str, Any]:
+        """
+        Get intelligent default values for events with missing data based on crop type and event type.
+        This prevents zero emissions when users enter "Unknown" values.
+        """
+        defaults = {
+            'volume': 10.0,  # liters
+            'area': 1.0,     # hectares
+            'concentration': '10-10-10',  # NPK
+            'application_method': 'broadcast'
+        }
+        
+        # Crop-specific defaults
+        crop_lower = crop_name.lower()
+        
+        # Event type specific defaults
+        if hasattr(event, 'type'):
+            if event.type == 'FE':  # Fertilizer
+                if 'citrus' in crop_lower or 'orange' in crop_lower:
+                    defaults.update({
+                        'volume': 50.0,  # Citrus needs more fertilizer
+                        'area': 2.0,     # Typical citrus grove size
+                        'concentration': '12-6-6',  # Citrus-specific NPK
+                    })
+                elif 'corn' in crop_lower:
+                    defaults.update({
+                        'volume': 75.0,  # Corn is heavy feeder
+                        'area': 1.5,     # Typical corn field
+                        'concentration': '46-0-0',  # Urea for corn
+                    })
+                elif any(nut in crop_lower for nut in ['almond', 'walnut', 'pecan']):
+                    defaults.update({
+                        'volume': 60.0,  # Nuts need substantial fertilizer
+                        'area': 3.0,     # Larger orchard areas
+                        'concentration': '15-15-15',  # Balanced for nuts
+                    })
+                elif any(veg in crop_lower for veg in ['tomato', 'lettuce', 'pepper']):
+                    defaults.update({
+                        'volume': 25.0,  # Vegetables need less volume
+                        'area': 0.5,     # Smaller vegetable plots
+                        'concentration': '20-20-20',  # High NPK for vegetables
+                    })
+                else:
+                    # Default fertilizer amounts
+                    defaults.update({
+                        'volume': 40.0,
+                        'area': 1.5,
+                        'concentration': '16-16-16',
+                    })
+                    
+            elif event.type in ['PE', 'HE', 'FU']:  # Pesticides, Herbicides, Fungicides
+                if 'citrus' in crop_lower:
+                    defaults.update({
+                        'volume': 25.0,  # Citrus pest control
+                        'area': 2.0,
+                        'application_method': 'spray'
+                    })
+                elif any(veg in crop_lower for veg in ['tomato', 'pepper', 'cucumber']):
+                    defaults.update({
+                        'volume': 15.0,  # Vegetables need less pesticide
+                        'area': 0.5,
+                        'application_method': 'foliar'
+                    })
+                else:
+                    defaults.update({
+                        'volume': 20.0,
+                        'area': 1.0,
+                        'application_method': 'spray'
+                    })
+        
+        # Production event defaults
+        elif hasattr(event, 'type') and event.type == 'IR':  # Irrigation
+            if any(nut in crop_lower for nut in ['almond', 'walnut']):
+                defaults.update({
+                    'volume': 500.0,  # Nuts need lots of water
+                    'area': 3.0,
+                })
+            elif 'citrus' in crop_lower:
+                defaults.update({
+                    'volume': 300.0,  # Citrus moderate water
+                    'area': 2.0,
+                })
+            else:
+                defaults.update({
+                    'volume': 200.0,  # Standard irrigation
+                    'area': 1.5,
+                })
+        
+        return defaults
+
+    def _convert_volume_to_liters(self, volume_str: str, event=None, crop_name: str = "default") -> float:
+        """Convert volume string to liters with intelligent defaults for missing data"""
+        try:
+            # Check if volume is missing or "Unknown"
+            if not volume_str or volume_str.lower() in ['unknown', 'n/a', 'na', 'none', 'null']:
+                if event:
+                    defaults = self._get_intelligent_defaults(event, crop_name)
+                    return defaults['volume']
+                return 10.0  # Fallback default
+            
             volume_str = volume_str.lower()
             number = self._extract_numeric_value(volume_str)
+            
+            # If extraction failed, use intelligent defaults
+            if number == 0.0 and event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['volume']
             
             if 'gal' in volume_str:
                 return number * 3.78541  # gallons to liters
@@ -736,13 +1072,28 @@ class EventCarbonCalculator:
                 return number  # Assume liters if no unit
                 
         except:
-            return 10.0  # Default 10 liters
+            if event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['volume']
+            return 10.0  # Fallback default
 
-    def _convert_area_to_hectares(self, area_str: str) -> float:
-        """Convert area string to hectares"""
+    def _convert_area_to_hectares(self, area_str: str, event=None, crop_name: str = "default") -> float:
+        """Convert area string to hectares with intelligent defaults for missing data"""
         try:
+            # Check if area is missing or "Unknown"
+            if not area_str or area_str.lower() in ['unknown', 'n/a', 'na', 'none', 'null']:
+                if event:
+                    defaults = self._get_intelligent_defaults(event, crop_name)
+                    return defaults['area']
+                return 1.0  # Fallback default
+            
             area_str = area_str.lower()
             number = self._extract_numeric_value(area_str)
+            
+            # If extraction failed, use intelligent defaults
+            if number == 0.0 and event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['area']
             
             if 'acre' in area_str:
                 return number * 0.404686  # acres to hectares
@@ -754,16 +1105,28 @@ class EventCarbonCalculator:
                 return number  # Assume hectares if no unit
                 
         except:
-            return 1.0  # Default 1 hectare
+            if event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['area']
+            return 1.0  # Fallback default
 
-    def _extract_numeric_value(self, text: str, default: float = 0.0) -> float:
-        """Extract first numeric value from text"""
-        try:
-            import re
-            numbers = re.findall(r'\d+(?:\.\d+)?', text)
-            return float(numbers[0]) if numbers else default
-        except:
-            return default
+    def _get_intelligent_concentration(self, concentration_str: str, event=None, crop_name: str = "default") -> str:
+        """Get intelligent concentration defaults for missing data"""
+        if not concentration_str or concentration_str.lower() in ['unknown', 'n/a', 'na', 'none', 'null']:
+            if event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['concentration']
+            return '10-10-10'  # Fallback default
+        return concentration_str
+
+    def _get_intelligent_application_method(self, method_str: str, event=None, crop_name: str = "default") -> str:
+        """Get intelligent application method defaults for missing data"""
+        if not method_str or method_str.lower() in ['unknown', 'n/a', 'na', 'none', 'null']:
+            if event:
+                defaults = self._get_intelligent_defaults(event, crop_name)
+                return defaults['application_method']
+            return 'broadcast'  # Fallback default
+        return method_str
 
     def _normalize_application_method(self, method: str) -> str:
         """Normalize application method to standard terms"""
@@ -948,430 +1311,6 @@ class EventCarbonCalculator:
 
     def _generate_soil_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
         """Generate recommendations for soil management events"""
-        recommendations = []
-        
-        if event.type == 'TI':  # Tillage
-            recommendations.append({
-                'type': 'conservation',
-                'title': 'Consider No-Till Practices',
-                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
-                'potential_savings': 0.0,
-                'carbon_reduction': 10.0
-            })
-        
-        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
-            recommendations.append({
-                'type': 'soil_health',
-                'title': 'pH Adjustment Needed',
-                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
-                'potential_savings': 200.0,
-                'carbon_reduction': 5.0
-            })
-        
-        return recommendations
-
-    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for business events"""
-        recommendations = []
-        
-        if event.type == 'HS':
-            recommendations.append({
-                'type': 'logistics',
-                'title': 'Optimize Transportation',
-                'description': 'Consolidate shipments to reduce transportation emissions',
-                'potential_savings': 100.0,
-                'carbon_reduction': emissions * 0.3
-            })
-        
-        if event.type == 'CE':
-            recommendations.append({
-                'type': 'certification',
-                'title': 'Expand Carbon Credit Programs',
-                'description': 'Additional sustainable practices can generate more carbon credits',
-                'potential_savings': 1000.0,
-                'carbon_reduction': 20.0
-            })
-        
-        return recommendations
-
-    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for pest management events"""
-        recommendations = []
-        
-        if event.type == 'SC' and event.pest_pressure_level == 'High':
-            recommendations.append({
-                'type': 'ipm',
-                'title': 'Implement Biological Control',
-                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
-                'potential_savings': 300.0,
-                'carbon_reduction': 5.0
-            })
-        
-        if event.type == 'IP':
-            recommendations.append({
-                'type': 'monitoring',
-                'title': 'Expand IPM Monitoring',
-                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
-                'potential_savings': 500.0,
-                'carbon_reduction': 8.0
-            })
-        
-        return recommendations
-
-    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
-        """
-        Get or create a CarbonSource for the given event type.
-        """
-        from ..models import CarbonSource
-        
-        # Map event types to carbon source names
-        source_mapping = {
-            'FE': 'Fertilizer Application',
-            'PE': 'Pesticide Application', 
-            'HE': 'Herbicide Application',
-            'FU': 'Fungicide Application',
-            'IR': 'Irrigation',
-            'HA': 'Harvesting',
-            'PL': 'Planting',
-            'PR': 'Pruning',
-            'FC': 'Fuel Consumption',
-            'MA': 'Equipment Maintenance',
-            'RE': 'Equipment Repair',
-            'CA': 'Equipment Calibration',
-            'BR': 'Equipment Breakdown',
-        }
-        
-        source_name = source_mapping.get(event.type, f'{event.type} Activity')
-        
-        source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'agricultural_activity',
-                'description': f'Carbon emissions from {source_name.lower()}',
-                'usda_factors_based': True,
-                'verification_status': 'factors_verified'
-            }
-        )
-        
-        return source 
-        recommendations = []
-        
-        if event.type == 'TI':  # Tillage
-            recommendations.append({
-                'type': 'conservation',
-                'title': 'Consider No-Till Practices',
-                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
-                'potential_savings': 0.0,
-                'carbon_reduction': 10.0
-            })
-        
-        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
-            recommendations.append({
-                'type': 'soil_health',
-                'title': 'pH Adjustment Needed',
-                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
-                'potential_savings': 200.0,
-                'carbon_reduction': 5.0
-            })
-        
-        return recommendations
-
-    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for business events"""
-        recommendations = []
-        
-        if event.type == 'HS':
-            recommendations.append({
-                'type': 'logistics',
-                'title': 'Optimize Transportation',
-                'description': 'Consolidate shipments to reduce transportation emissions',
-                'potential_savings': 100.0,
-                'carbon_reduction': emissions * 0.3
-            })
-        
-        if event.type == 'CE':
-            recommendations.append({
-                'type': 'certification',
-                'title': 'Expand Carbon Credit Programs',
-                'description': 'Additional sustainable practices can generate more carbon credits',
-                'potential_savings': 1000.0,
-                'carbon_reduction': 20.0
-            })
-        
-        return recommendations
-
-    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for pest management events"""
-        recommendations = []
-        
-        if event.type == 'SC' and event.pest_pressure_level == 'High':
-            recommendations.append({
-                'type': 'ipm',
-                'title': 'Implement Biological Control',
-                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
-                'potential_savings': 300.0,
-                'carbon_reduction': 5.0
-            })
-        
-        if event.type == 'IP':
-            recommendations.append({
-                'type': 'monitoring',
-                'title': 'Expand IPM Monitoring',
-                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
-                'potential_savings': 500.0,
-                'carbon_reduction': 8.0
-            })
-        
-        return recommendations
-
-    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
-        """
-        Get or create a CarbonSource for the given event type.
-        """
-        from ..models import CarbonSource
-        
-        # Map event types to carbon source names
-        source_mapping = {
-            'FE': 'Fertilizer Application',
-            'PE': 'Pesticide Application', 
-            'HE': 'Herbicide Application',
-            'FU': 'Fungicide Application',
-            'IR': 'Irrigation',
-            'HA': 'Harvesting',
-            'PL': 'Planting',
-            'PR': 'Pruning',
-            'FC': 'Fuel Consumption',
-            'MA': 'Equipment Maintenance',
-            'RE': 'Equipment Repair',
-            'CA': 'Equipment Calibration',
-            'BR': 'Equipment Breakdown',
-        }
-        
-        source_name = source_mapping.get(event.type, f'{event.type} Activity')
-        
-        source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'agricultural_activity',
-                'description': f'Carbon emissions from {source_name.lower()}',
-                'usda_factors_based': True,
-                'verification_status': 'factors_verified'
-            }
-        )
-        
-        return source 
-        recommendations = []
-        
-        if event.type == 'TI':  # Tillage
-            recommendations.append({
-                'type': 'conservation',
-                'title': 'Consider No-Till Practices',
-                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
-                'potential_savings': 0.0,
-                'carbon_reduction': 10.0
-            })
-        
-        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
-            recommendations.append({
-                'type': 'soil_health',
-                'title': 'pH Adjustment Needed',
-                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
-                'potential_savings': 200.0,
-                'carbon_reduction': 5.0
-            })
-        
-        return recommendations
-
-    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for business events"""
-        recommendations = []
-        
-        if event.type == 'HS':
-            recommendations.append({
-                'type': 'logistics',
-                'title': 'Optimize Transportation',
-                'description': 'Consolidate shipments to reduce transportation emissions',
-                'potential_savings': 100.0,
-                'carbon_reduction': emissions * 0.3
-            })
-        
-        if event.type == 'CE':
-            recommendations.append({
-                'type': 'certification',
-                'title': 'Expand Carbon Credit Programs',
-                'description': 'Additional sustainable practices can generate more carbon credits',
-                'potential_savings': 1000.0,
-                'carbon_reduction': 20.0
-            })
-        
-        return recommendations
-
-    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for pest management events"""
-        recommendations = []
-        
-        if event.type == 'SC' and event.pest_pressure_level == 'High':
-            recommendations.append({
-                'type': 'ipm',
-                'title': 'Implement Biological Control',
-                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
-                'potential_savings': 300.0,
-                'carbon_reduction': 5.0
-            })
-        
-        if event.type == 'IP':
-            recommendations.append({
-                'type': 'monitoring',
-                'title': 'Expand IPM Monitoring',
-                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
-                'potential_savings': 500.0,
-                'carbon_reduction': 8.0
-            })
-        
-        return recommendations
-
-    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
-        """
-        Get or create a CarbonSource for the given event type.
-        """
-        from ..models import CarbonSource
-        
-        # Map event types to carbon source names
-        source_mapping = {
-            'FE': 'Fertilizer Application',
-            'PE': 'Pesticide Application', 
-            'HE': 'Herbicide Application',
-            'FU': 'Fungicide Application',
-            'IR': 'Irrigation',
-            'HA': 'Harvesting',
-            'PL': 'Planting',
-            'PR': 'Pruning',
-            'FC': 'Fuel Consumption',
-            'MA': 'Equipment Maintenance',
-            'RE': 'Equipment Repair',
-            'CA': 'Equipment Calibration',
-            'BR': 'Equipment Breakdown',
-        }
-        
-        source_name = source_mapping.get(event.type, f'{event.type} Activity')
-        
-        source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'agricultural_activity',
-                'description': f'Carbon emissions from {source_name.lower()}',
-                'usda_factors_based': True,
-                'verification_status': 'factors_verified'
-            }
-        )
-        
-        return source 
-        recommendations = []
-        
-        if event.type == 'TI':  # Tillage
-            recommendations.append({
-                'type': 'conservation',
-                'title': 'Consider No-Till Practices',
-                'description': 'No-till farming can sequester 0.5-1.5 tons CO2e per hectare per year',
-                'potential_savings': 0.0,
-                'carbon_reduction': 10.0
-            })
-        
-        if event.type == 'ST' and float(event.soil_ph or 0) < 6.0:
-            recommendations.append({
-                'type': 'soil_health',
-                'title': 'pH Adjustment Needed',
-                'description': 'Optimal pH improves nutrient efficiency and reduces fertilizer needs',
-                'potential_savings': 200.0,
-                'carbon_reduction': 5.0
-            })
-        
-        return recommendations
-
-    def _generate_business_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for business events"""
-        recommendations = []
-        
-        if event.type == 'HS':
-            recommendations.append({
-                'type': 'logistics',
-                'title': 'Optimize Transportation',
-                'description': 'Consolidate shipments to reduce transportation emissions',
-                'potential_savings': 100.0,
-                'carbon_reduction': emissions * 0.3
-            })
-        
-        if event.type == 'CE':
-            recommendations.append({
-                'type': 'certification',
-                'title': 'Expand Carbon Credit Programs',
-                'description': 'Additional sustainable practices can generate more carbon credits',
-                'potential_savings': 1000.0,
-                'carbon_reduction': 20.0
-            })
-        
-        return recommendations
-
-    def _generate_pest_recommendations(self, event, emissions: float) -> List[Dict[str, Any]]:
-        """Generate recommendations for pest management events"""
-        recommendations = []
-        
-        if event.type == 'SC' and event.pest_pressure_level == 'High':
-            recommendations.append({
-                'type': 'ipm',
-                'title': 'Implement Biological Control',
-                'description': 'Beneficial insects can reduce pesticide use by 30-50%',
-                'potential_savings': 300.0,
-                'carbon_reduction': 5.0
-            })
-        
-        if event.type == 'IP':
-            recommendations.append({
-                'type': 'monitoring',
-                'title': 'Expand IPM Monitoring',
-                'description': 'Regular monitoring can prevent pest outbreaks and reduce treatments',
-                'potential_savings': 500.0,
-                'carbon_reduction': 8.0
-            })
-        
-        return recommendations
-
-    def _get_or_create_carbon_source(self, event) -> 'CarbonSource':
-        """
-        Get or create a CarbonSource for the given event type.
-        """
-        from ..models import CarbonSource
-        
-        # Map event types to carbon source names
-        source_mapping = {
-            'FE': 'Fertilizer Application',
-            'PE': 'Pesticide Application', 
-            'HE': 'Herbicide Application',
-            'FU': 'Fungicide Application',
-            'IR': 'Irrigation',
-            'HA': 'Harvesting',
-            'PL': 'Planting',
-            'PR': 'Pruning',
-            'FC': 'Fuel Consumption',
-            'MA': 'Equipment Maintenance',
-            'RE': 'Equipment Repair',
-            'CA': 'Equipment Calibration',
-            'BR': 'Equipment Breakdown',
-        }
-        
-        source_name = source_mapping.get(event.type, f'{event.type} Activity')
-        
-        source, created = CarbonSource.objects.get_or_create(
-            name=source_name,
-            defaults={
-                'category': 'agricultural_activity',
-                'description': f'Carbon emissions from {source_name.lower()}',
-                'usda_factors_based': True,
-                'verification_status': 'factors_verified'
-            }
-        )
-        
-        return source 
         recommendations = []
         
         if event.type == 'TI':  # Tillage

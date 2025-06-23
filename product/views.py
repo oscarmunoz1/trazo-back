@@ -53,16 +53,38 @@ class ParcelViewSet(CompanyNestedViewSet, viewsets.ModelViewSet):
     def history(
         self, request, pk=None, parcel_pk=None, company_pk=None, establishment_pk=None
     ):
+        """
+        OPTIMIZED: Get parcel history using the optimized serializer to prevent USDA API calls.
+        This endpoint was causing performance issues by using HistorySerializer which triggers
+        expensive carbon calculations and USDA API calls.
+        """
+        from history.serializers import OptimizedHistoryListSerializer
+        
         parcel = self.get_object()
 
-        histories = parcel.histories.filter(published=True).order_by("-id")
+        # Use optimized queryset to prevent N+1 queries
+        histories = parcel.histories.select_related(
+            'product',
+            'parcel',
+            'crop_type'
+        ).only(
+            'id', 'name', 'start_date', 'finish_date', 'published',
+            'earning', 'reputation', 'qr_code', 'is_outdoor',
+            'age_of_plants', 'number_of_plants', 'soil_ph', 'extra_data',
+            'product__id', 'product__name',
+            'parcel__id', 'parcel__name', 
+            'crop_type__id', 'crop_type__name', 'crop_type__category', 'crop_type__slug'
+        ).filter(published=True).order_by("-id")
+        
         if parcel.current_history is not None:
-            return Response(
-                HistorySerializer(
-                    histories.exclude(id=parcel.current_history.id), many=True
-                ).data
-            )
-        return Response(HistorySerializer(histories, many=True).data)
+            histories = histories.exclude(id=parcel.current_history.id)
+        
+        # Use the optimized serializer that avoids expensive operations
+        return Response(
+            OptimizedHistoryListSerializer(
+                histories, many=True, context={'request': request}
+            ).data
+        )
 
     @action(detail=True, methods=["post"])
     def finish_history(

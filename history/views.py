@@ -1,9 +1,10 @@
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.db.models import Avg, Q
+from django.db.models import Avg, Q, Count, Prefetch
 from django.utils import timezone
 from django.utils.timezone import make_aware
+from django.core.cache import cache
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action, permission_classes
@@ -22,6 +23,21 @@ from .serializers import (
     HistorySerializer,
     ListHistoryClassSerializer,
     PublicHistorySerializer,
+    WeatherEventSerializer,
+    ChemicalEventSerializer,
+    ProductionEventSerializer,
+    GeneralEventSerializer,
+    EquipmentEventSerializer,
+    SoilManagementEventSerializer,
+    PestManagementEventSerializer,
+    UpdateWeatherEventSerializer,
+    UpdateChemicalEventSerializer,
+    UpdateProductionEventSerializer,
+    UpdateGeneralEventSerializer,
+    UpdateEquipmentEventSerializer,
+    UpdateSoilManagementEventSerializer,
+    UpdatePestManagementEventSerializer,
+    OptimizedHistoryListSerializer
 )
 
 import hashlib
@@ -89,7 +105,8 @@ class HistoryViewSet(viewsets.ModelViewSet):
         ):
             return HistorySerializer
         elif self.action == "list":
-            return ListHistoryClassSerializer
+            # Use optimized serializer for dashboard list view
+            return OptimizedHistoryListSerializer
         else:
             return HistorySerializer
     
@@ -99,6 +116,9 @@ class HistoryViewSet(viewsets.ModelViewSet):
         return context
 
     def get_queryset(self):
+        """
+        Optimized queryset with proper database optimizations to prevent N+1 queries.
+        """
         if self.action == "public_history":
             return History.objects.filter(published=True)
         elif self.action == "my_scans":
@@ -116,8 +136,94 @@ class HistoryViewSet(viewsets.ModelViewSet):
                 'production__product',
                 'production__parcel__establishment'
             ).order_by('-date')
+        elif self.action == "list":
+            # Optimized queryset for dashboard list view
+            return self.get_optimized_list_queryset()
         else:
-            return History.objects.all()
+            # For other actions, apply parcel filtering if parcel_pk is provided
+            queryset = History.objects.all()
+            parcel_pk = self.kwargs.get('parcel_pk')
+            if parcel_pk:
+                queryset = queryset.filter(parcel_id=parcel_pk)
+            return queryset
+
+    def get_optimized_list_queryset(self):
+        """
+        Ultra-optimized queryset for the dashboard list view that completely avoids
+        event-related queries and uses minimal data.
+        """
+        # Get parcel_pk from URL parameters
+        parcel_pk = self.kwargs.get('parcel_pk')
+        
+        # Ultra-minimal queryset - no events, no complex relationships
+        # Note: We don't cache querysets directly as they can't be serialized
+        queryset = History.objects.select_related(
+            'product',
+            'parcel',
+            'crop_type'
+        ).only(
+            # Only fetch absolutely essential fields for the dashboard
+            'id', 'name', 'start_date', 'finish_date', 'published',
+            'earning', 'reputation', 'qr_code', 'is_outdoor',
+            'age_of_plants', 'number_of_plants', 'soil_ph', 'extra_data',
+            'product__id', 'product__name',
+            'parcel__id', 'parcel__name', 
+            'crop_type__id', 'crop_type__name', 'crop_type__category', 'crop_type__slug'
+        ).order_by('-start_date')
+        
+        # Filter by parcel if parcel_pk is provided
+        if parcel_pk:
+            queryset = queryset.filter(parcel_id=parcel_pk)
+        
+        return queryset
+
+    def list(self, request, *args, **kwargs):
+        """
+        Optimized list method with caching and performance monitoring.
+        """
+        import time
+        start_time = time.time()
+        
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        # Add performance logging
+        query_time = time.time() - start_time
+        if query_time > 1.0:  # Log slow queries
+            print(f"Slow history query detected: {query_time:.2f}s for parcel {self.kwargs.get('parcel_pk')}")
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        """Override update to invalidate cache."""
+        response = super().update(request, *args, **kwargs)
+        
+        # Invalidate cache for this parcel's history list
+        parcel_id = self.kwargs.get('parcel_pk')
+        if parcel_id:
+            cache_key = f'history_list_parcel_{parcel_id}_v3'
+            cache.delete(cache_key)
+        
+        return response
+
+    def destroy(self, request, *args, **kwargs):
+        """Override destroy to invalidate cache."""
+        # Get parcel_id before deletion
+        parcel_id = self.kwargs.get('parcel_pk')
+        
+        response = super().destroy(request, *args, **kwargs)
+        
+        # Invalidate cache for this parcel's history list
+        if parcel_id:
+            cache_key = f'history_list_parcel_{parcel_id}_v3'
+            cache.delete(cache_key)
+        
+        return response
 
     def create(self, request):
         data = request.data
@@ -235,6 +341,10 @@ class HistoryViewSet(viewsets.ModelViewSet):
             # Update parcel's current history
             parcel.current_history = history
             parcel.save()
+            
+            # Invalidate cache for this parcel's history list
+            cache_key = f'history_list_parcel_{parcel.id}_v3'
+            cache.delete(cache_key)
             
             # Process template events if provided
             if data.get('template_events'):

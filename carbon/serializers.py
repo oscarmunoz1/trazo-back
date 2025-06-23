@@ -20,6 +20,14 @@ from .models import (
 
 # Database-driven Crop Template System Serializers
 
+class CropTypeDropdownSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for crop type dropdowns - only essential fields"""
+    
+    class Meta:
+        model = CropType
+        fields = ['id', 'name', 'category', 'slug']
+
+
 class CropTypeSerializer(serializers.ModelSerializer):
     """Serializer for CropType model"""
     

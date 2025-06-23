@@ -835,130 +835,113 @@ class PublicHistorySerializer(serializers.ModelSerializer):
             # Get basic event data without expensive carbon calculations
             events_data = []
             
-            # Get events using minimal queries with correct related names
-            chemical_events = history.history_chemicalevent_events.only(
-                'id', 'date', 'description', 'commercial_name', 'volume', 'concentration', 'type'
+            # Get events using minimal queries
+            chemical_events = history.chemical_events.select_related('chemical').only(
+                'id', 'date', 'note', 'chemical__name', 'amount', 'unit'
             )
-            production_events = history.history_productionevent_events.only(
-                'id', 'date', 'description', 'type', 'observation'
+            production_events = history.production_events.only(
+                'id', 'date', 'note', 'amount', 'unit', 'type'
             )
-            weather_events = history.history_weatherevent_events.only(
-                'id', 'date', 'description', 'type', 'observation'
+            weather_events = history.weather_events.only(
+                'id', 'date', 'note', 'temperature', 'humidity', 'rainfall'
             )
-            equipment_events = history.history_equipmentevent_events.only(
-                'id', 'date', 'description', 'type', 'equipment_name'
+            equipment_events = history.equipment_events.only(
+                'id', 'date', 'note', 'type', 'fuel_consumption'
             )
-            soil_events = history.history_soilmanagementevent_events.only(
-                'id', 'date', 'description', 'type', 'amendment_type'
+            soil_events = history.soil_management_events.only(
+                'id', 'date', 'note', 'type', 'area_treated'
             )
-            pest_events = history.history_pestmanagementevent_events.only(
-                'id', 'date', 'description', 'type', 'pest_species'
+            pest_events = history.pest_management_events.only(
+                'id', 'date', 'note', 'type', 'area_treated'
             )
-            general_events = history.history_generalevent_events.only(
-                'id', 'date', 'description', 'name', 'observation'
+            general_events = history.general_events.only(
+                'id', 'date', 'note', 'type'
             )
             
             # Create lightweight event data without carbon calculations
             for event in chemical_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Chemical Application',
-                    'observation': getattr(event, 'observation', ''),
-                    'type': 'chemical',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': event.volume,
-                    'concentration': event.concentration,
-                    'equipment': event.commercial_name
+                    'date': event.date,
+                    'note': event.note,
+                    'type': 'Chemical Application',
+                    'chemical_name': event.chemical.name if event.chemical else 'Unknown',
+                    'amount': event.amount,
+                    'unit': event.unit,
+                    'event_type': 1,  # CHEMICAL_EVENT_TYPE
+                    'carbon_data': None  # Skip carbon calculation for performance
                 })
             
             for event in production_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Production Activity',
-                    'observation': event.observation or '',
-                    'type': 'production',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': None
+                    'date': event.date,
+                    'note': event.note,
+                    'type': event.get_type_display() or 'Production Activity',
+                    'amount': event.amount,
+                    'unit': event.unit,
+                    'event_type': 2,  # PRODUCTION_EVENT_TYPE
+                    'carbon_data': None
                 })
             
             for event in weather_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Weather Event',
-                    'observation': event.observation or '',
-                    'type': 'weather',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': None
+                    'date': event.date,
+                    'note': event.note,
+                    'type': 'Weather Event',
+                    'temperature': event.temperature,
+                    'humidity': event.humidity,
+                    'rainfall': event.rainfall,
+                    'event_type': 3,  # WEATHER_EVENT_TYPE
+                    'carbon_data': None
                 })
             
             for event in equipment_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Equipment Use',
-                    'observation': getattr(event, 'observation', ''),
-                    'type': 'equipment',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': event.equipment_name
+                    'date': event.date,
+                    'note': event.note,
+                    'type': event.get_type_display() or 'Equipment Use',
+                    'fuel_consumption': event.fuel_consumption,
+                    'event_type': 4,  # EQUIPMENT_EVENT_TYPE
+                    'carbon_data': None
                 })
             
             for event in soil_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Soil Management',
-                    'observation': getattr(event, 'observation', ''),
-                    'type': 'soil_management',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': event.amendment_type
+                    'date': event.date,
+                    'note': event.note,
+                    'type': event.get_type_display() or 'Soil Management',
+                    'area_treated': event.area_treated,
+                    'event_type': 5,  # SOIL_MANAGEMENT_EVENT_TYPE
+                    'carbon_data': None
                 })
             
             for event in pest_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.description or 'Pest Management',
-                    'observation': getattr(event, 'observation', ''),
-                    'type': 'pest_management',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': event.pest_species
+                    'date': event.date,
+                    'note': event.note,
+                    'type': event.get_type_display() or 'Pest Management',
+                    'area_treated': event.area_treated,
+                    'event_type': 6,  # PEST_MANAGEMENT_EVENT_TYPE
+                    'carbon_data': None
                 })
             
             for event in general_events:
                 events_data.append({
                     'id': event.id,
-                    'date': event.date.isoformat() if event.date else None,
-                    'description': event.name or event.description or 'General Event',
-                    'observation': event.observation or '',
-                    'type': 'general',
-                    'certified': getattr(event, 'certified', True),
-                    'index': getattr(event, 'index', 0),
-                    'volume': None,
-                    'concentration': None,
-                    'equipment': None
+                    'date': event.date,
+                    'note': event.note,
+                    'type': event.get_type_display() or 'General Event',
+                    'event_type': 7,  # GENERAL_EVENT_TYPE
+                    'carbon_data': None
                 })
             
-            # Sort by index first, then by date
-            events_data.sort(key=lambda x: (x.get('index', 0), x.get('date', '')))
+            # Sort by date
+            events_data.sort(key=lambda x: x['date'], reverse=True)
             
             return events_data
             
