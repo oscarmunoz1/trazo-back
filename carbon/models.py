@@ -373,6 +373,49 @@ class CarbonEntry(models.Model):
     usda_factors_based = models.BooleanField(default=False, help_text='Whether calculations use USDA emission factors')
     verification_status = models.CharField(max_length=50, default='estimated', help_text='factors_verified, estimated, calculation_error')
     data_source = models.CharField(max_length=200, default='Unknown', help_text='Source of emission factors (e.g., USDA Agricultural Research Service)')
+    
+    # Enhanced verification fields for offset verification system
+    VERIFICATION_LEVEL_CHOICES = [
+        ('self_reported', 'Self Reported'),
+        ('community_verified', 'Community Verified'),
+        ('certified_project', 'Certified Project'),
+    ]
+    
+    AUDIT_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('scheduled', 'Audit Scheduled'),
+        ('in_progress', 'Under Review'),
+        ('passed', 'Audit Passed'),
+        ('failed', 'Audit Failed'),
+    ]
+    
+    verification_level = models.CharField(max_length=25, choices=VERIFICATION_LEVEL_CHOICES, default='self_reported')
+    trust_score = models.FloatField(default=0.5, validators=[MinValueValidator(0.0), MaxValueValidator(1.0)])
+    effective_amount = models.FloatField(null=True, blank=True, help_text='Amount * trust_score')
+    
+    # Additionality and verification requirements
+    additionality_verified = models.BooleanField(default=False)
+    permanence_plan = models.TextField(blank=True)
+    baseline_data = models.JSONField(default=dict)
+    audit_status = models.CharField(max_length=20, choices=AUDIT_STATUS_CHOICES, default='pending')
+    audit_scheduled_date = models.DateTimeField(null=True, blank=True)
+    third_party_verification_url = models.URLField(blank=True)
+    registry_verification_id = models.CharField(max_length=100, blank=True)
+    methodology_template = models.CharField(max_length=50, blank=True)
+    
+    # Requirements tracking
+    evidence_requirements_met = models.BooleanField(default=False)
+    documentation_complete = models.BooleanField(default=False)
+    additionality_evidence = models.TextField(blank=True)
+    
+    # Evidence files
+    evidence_photos = models.JSONField(default=list, blank=True, help_text='List of photo URLs as evidence')
+    evidence_documents = models.JSONField(default=list, blank=True, help_text='List of document URLs as evidence')
+    
+    # Community verification fields
+    attestation_count = models.IntegerField(default=0, help_text='Number of community attestations received')
+    community_attestations = models.JSONField(default=list, blank=True, help_text='List of community attestations')
+    
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -391,11 +434,45 @@ class CarbonEntry(models.Model):
             models.Index(fields=['iot_device_id']),
             models.Index(fields=['usda_verified']),
             models.Index(fields=['usda_factors_based']),
-            models.Index(fields=['verification_status'])
+            models.Index(fields=['verification_status']),
+            models.Index(fields=['verification_level']),
+            models.Index(fields=['audit_status']),
+            models.Index(fields=['additionality_verified']),
+            models.Index(fields=['registry_verification_id'])
         ]
+
+    def save(self, *args, **kwargs):
+        # Only set basic trust score if not already set by verification service
+        if self.type == 'offset' and not hasattr(self, '_verification_processed'):
+            trust_scores = {
+                'self_reported': 0.5,
+                'community_verified': 0.75,
+                'certified_project': 1.0
+            }
+            # Only set trust score if it's still the default
+            if self.trust_score == 0.5 or self.trust_score is None:
+                self.trust_score = trust_scores.get(self.verification_level, 0.5)
+            
+            # Only set basic effective amount if not set by verification service
+            if self.effective_amount is None:
+                self.effective_amount = self.amount * self.trust_score
+        elif self.type == 'emission':
+            self.effective_amount = self.amount
+        
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.type.capitalize()} - {self.amount} ({self.timestamp})"
+    
+    @property
+    def verification_badge(self):
+        """Return verification badge configuration"""
+        badges = {
+            'self_reported': {'color': 'orange', 'text': 'Self Reported', 'icon': 'document'},
+            'community_verified': {'color': 'blue', 'text': 'Community Verified', 'icon': 'users'},
+            'certified_project': {'color': 'green', 'text': 'Certified Project', 'icon': 'certificate'}
+        }
+        return badges.get(self.verification_level, badges['self_reported'])
 
     @classmethod
     def calculate_carbon_score(cls, total_emissions, total_offsets, industry_benchmark=None):
@@ -556,7 +633,9 @@ class CarbonAuditLog(models.Model):
         ('create', 'Create'),
         ('update', 'Update'),
         ('delete', 'Delete'),
-        ('verify', 'Verify')
+        ('verify', 'Verify'),
+        ('gaming_detected', 'Gaming Detected'),
+        ('audit_scheduled', 'Audit Scheduled')
     ])
     timestamp = models.DateTimeField(auto_now=True)
     details = models.TextField(blank=True)
@@ -1182,3 +1261,39 @@ class USDACalculationAudit(models.Model):
     
     def __str__(self):
         return f"USDA Audit - {self.event_type} #{self.event_id} - {self.calculated_at}"
+
+class VerificationAudit(models.Model):
+    """Track verification audits and results"""
+    
+    AUDIT_TYPE_CHOICES = [
+        ('random', 'Random Audit'),
+        ('scheduled', 'Scheduled Review'),
+        ('complaint', 'Complaint Investigation')
+    ]
+    
+    RESULT_CHOICES = [
+        ('passed', 'Passed'),
+        ('failed', 'Failed'),
+        ('pending', 'Pending Review')
+    ]
+    
+    carbon_entry = models.ForeignKey(CarbonEntry, on_delete=models.CASCADE, related_name='verification_audits')
+    audit_type = models.CharField(max_length=20, choices=AUDIT_TYPE_CHOICES)
+    auditor_name = models.CharField(max_length=200)
+    audit_date = models.DateTimeField()
+    findings = models.JSONField(default=dict)
+    result = models.CharField(max_length=20, choices=RESULT_CHOICES)
+    corrective_actions = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'carbon_verification_audit'
+        ordering = ['-audit_date']
+        indexes = [
+            models.Index(fields=['audit_type']),
+            models.Index(fields=['result']),
+            models.Index(fields=['audit_date'])
+        ]
+    
+    def __str__(self):
+        return f"Audit {self.carbon_entry} - {self.result}"

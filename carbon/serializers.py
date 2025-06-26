@@ -241,7 +241,7 @@ class QuickEventTemplateSerializer(serializers.ModelSerializer):
 class CarbonSourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = CarbonSource
-        fields = '__all__'
+        fields = ['id', 'name', 'description', 'unit', 'category', 'usda_verified']
 
 class CarbonOffsetActionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -252,63 +252,47 @@ class CarbonEntrySerializer(serializers.ModelSerializer):
     establishment_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     production_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
     source_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    source = CarbonSourceSerializer(read_only=True)
 
     class Meta:
         model = CarbonEntry
         fields = ['id', 'establishment', 'production', 'type', 'amount', 'year', 
                   'description', 'source', 'source_id', 'created_at', 'created_by',
-                  'usda_verified', 'establishment_id', 'production_id']
-        read_only_fields = ['created_at', 'created_by', 'usda_verified']
+                  'usda_verified', 'establishment_id', 'production_id',
+                  'verification_level', 'trust_score', 'effective_amount',
+                  'additionality_verified', 'audit_status', 'registry_verification_id']
+        read_only_fields = ['created_at', 'created_by', 'usda_verified', 'effective_amount']
 
     def validate(self, data):
         # Handle both establishment and establishment_id
-        establishment = data.get('establishment')
         establishment_id = data.pop('establishment_id', None)
-        
-        if establishment_id and not establishment:
+        if establishment_id:
             try:
                 data['establishment'] = Establishment.objects.get(id=establishment_id)
             except Establishment.DoesNotExist:
-                raise serializers.ValidationError(f"Establishment with ID {establishment_id} not found")
+                raise serializers.ValidationError('Invalid establishment ID')
         
         # Handle both production and production_id
-        production = data.get('production')
         production_id = data.pop('production_id', None)
-        
-        if production_id and not production:
+        if production_id:
             try:
                 data['production'] = History.objects.get(id=production_id)
             except History.DoesNotExist:
-                raise serializers.ValidationError(f"Production with ID {production_id} not found")
+                raise serializers.ValidationError('Invalid production ID')
         
-        # Handle both source and source_id  
-        source = data.get('source')
+        # Handle source_id
         source_id = data.pop('source_id', None)
-        
-        if source_id and not source:
+        if source_id:
             try:
                 data['source'] = CarbonSource.objects.get(id=source_id)
             except CarbonSource.DoesNotExist:
-                raise serializers.ValidationError(f"Carbon source with ID {source_id} not found")
-        
-        # Validate that either establishment or production is provided
-        if not data.get('establishment') and not data.get('production'):
-            raise serializers.ValidationError("Either establishment or production must be set.")
+                raise serializers.ValidationError('Invalid source ID')
             
         return data
 
     def create(self, validated_data):
         # Set the created_by field to the current user
         validated_data['created_by'] = self.context['request'].user
-        # Template logic: auto-calculate amount if source has default_emission_factor and 'raw_amount' is provided
-        source = validated_data.get('source')
-        raw_amount = self.initial_data.get('raw_amount')
-        if source and raw_amount is not None:
-            try:
-                raw_amount = float(raw_amount)
-                validated_data['amount'] = raw_amount * source.default_emission_factor
-            except Exception:
-                pass  # fallback to provided amount
         return super().create(validated_data)
 
 class CarbonCertificationSerializer(serializers.ModelSerializer):

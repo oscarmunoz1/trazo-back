@@ -193,9 +193,418 @@ Build on existing strengths:
 - ✅ Enhanced blockchain integration with existing carbon models
 - ✅ Complete deployment infrastructure for mainnet launch
 
-### **🔄 MONTH 2: Smart Templates Integration & Voice Enhancement**
+### **🔄 MONTH 2: Carbon Offset Verification & Smart Templates Integration**
 
-#### **Week 5-6: Smart Event Templates Integration**
+#### **Week 5-6: Carbon Offset Verification System Enhancement**
+
+**Priority 1: Project Redirection System Implementation**
+
+**Frontend Tasks:**
+
+```typescript
+// File: trazo-app/src/views/Dashboard/Dashboard/Establishment/components/ModernOffsetModal.tsx (ENHANCE EXISTING)
+export const ModernOffsetModal: React.FC<ModernOffsetModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  establishmentId,
+}) => {
+  // NEW: Enhanced project redirection with registry URLs
+  const [selectedProject, setSelectedProject] =
+    useState<CertifiedProject | null>(null);
+  const [certifiedProjects, setCertifiedProjects] = useState<
+    CertifiedProject[]
+  >([]);
+
+  // NEW: Enhanced toast notifications for project redirection
+  const handleProjectRedirection = (project: CertifiedProject, result: any) => {
+    toast({
+      title: "Offset Entry Created!",
+      description: `Entry created with ${Math.round(
+        result.trust_score * 100
+      )}% trust score. Click "View Project" to visit the registry for verification.`,
+      status: "success",
+      duration: 8000,
+      isClosable: true,
+      position: "top",
+      render: ({ onClose: closeToast }) => (
+        <Alert
+          status="success"
+          variant="solid"
+          borderRadius="md"
+          boxShadow="lg"
+          p={4}
+          maxW="400px"
+        >
+          <AlertIcon />
+          <Box flex="1">
+            <AlertTitle>Offset Entry Created!</AlertTitle>
+            <AlertDescription fontSize="sm">
+              Entry created with {Math.round(result.trust_score * 100)}% trust
+              score.
+            </AlertDescription>
+            <HStack mt={2} spacing={2}>
+              <Button
+                size="sm"
+                colorScheme="whiteAlpha"
+                variant="outline"
+                onClick={() => {
+                  window.open(project.registry_url || "#", "_blank");
+                  closeToast();
+                }}
+              >
+                View Project
+              </Button>
+              <Button size="sm" variant="ghost" onClick={closeToast}>
+                Close
+              </Button>
+            </HStack>
+          </Box>
+        </Alert>
+      ),
+    });
+  };
+
+  // NEW: Enhanced certified projects with registry URLs
+  const CertifiedProjectCard = ({ project }: { project: CertifiedProject }) => (
+    <Card
+      borderWidth="2px"
+      borderColor={
+        selectedProject?.id === project.id ? "green.400" : "gray.200"
+      }
+      cursor="pointer"
+      onClick={() => setSelectedProject(project)}
+      _hover={{ borderColor: "green.300", shadow: "md" }}
+    >
+      <CardBody>
+        <VStack align="start" spacing={3}>
+          <HStack justify="space-between" width="100%">
+            <Text fontWeight="bold" fontSize="lg">
+              {project.name}
+            </Text>
+            <Badge colorScheme={project.verification_badge.color}>
+              {project.verification_standard}
+            </Badge>
+          </HStack>
+
+          <Text fontSize="sm" color="gray.600" noOfLines={2}>
+            {project.description}
+          </Text>
+
+          <HStack spacing={4}>
+            <VStack spacing={0} align="start">
+              <Text fontSize="xs" color="gray.500">
+                Price
+              </Text>
+              <Text fontWeight="semibold">
+                ${project.price_per_credit}/credit
+              </Text>
+            </VStack>
+            <VStack spacing={0} align="start">
+              <Text fontSize="xs" color="gray.500">
+                Available
+              </Text>
+              <Text fontWeight="semibold">
+                {project.available_credits.toLocaleString()}
+              </Text>
+            </VStack>
+            <VStack spacing={0} align="start">
+              <Text fontSize="xs" color="gray.500">
+                Vintage
+              </Text>
+              <Text fontWeight="semibold">{project.vintage_year}</Text>
+            </VStack>
+          </HStack>
+
+          <HStack>
+            <Icon as={FiMapPin} color="gray.500" />
+            <Text fontSize="sm">
+              {project.region}, {project.country}
+            </Text>
+          </HStack>
+
+          {project.co_benefits && project.co_benefits.length > 0 && (
+            <Wrap>
+              {project.co_benefits.slice(0, 3).map((benefit, index) => (
+                <WrapItem key={index}>
+                  <Badge size="sm" colorScheme="blue" variant="subtle">
+                    {benefit}
+                  </Badge>
+                </WrapItem>
+              ))}
+            </Wrap>
+          )}
+
+          {project.trazo_verified && (
+            <HStack>
+              <Icon as={FiShield} color="green.500" />
+              <Text fontSize="xs" color="green.600" fontWeight="semibold">
+                Trazo Verified
+              </Text>
+            </HStack>
+          )}
+        </VStack>
+      </CardBody>
+    </Card>
+  );
+};
+```
+
+**Backend Tasks:**
+
+```python
+# File: trazo-back/carbon/management/commands/create_certified_projects.py (NEW FILE)
+class Command(BaseCommand):
+    help = 'Create sample certified offset projects with registry URLs'
+
+    def handle(self, *args, **options):
+        projects_data = [
+            {
+                'project_id': 'VCS-1001',
+                'name': 'Amazon Rainforest Conservation Project',
+                'description': 'Large-scale forest conservation project protecting 50,000 hectares of Amazon rainforest.',
+                'project_type': 'forestry',
+                'verification_standard': 'VCS',
+                'verification_body': 'Verra',
+                'registry_url': 'https://registry.verra.org/app/projectDetail/VCS/1001',
+                'country': 'Brazil',
+                'region': 'Amazon Basin',
+                'developer': 'Amazon Conservation International',
+                'price_per_credit': Decimal('12.50'),
+                'total_credits_issued': 250000,
+                'available_credits': 125000,
+                'vintage_year': 2023,
+                'co_benefits': ['Biodiversity Conservation', 'Indigenous Community Support', 'Water Conservation'],
+                'featured': True,
+                'trazo_verified': True,
+                'status': 'active'
+            },
+            {
+                'project_id': 'GS-2002',
+                'name': 'Wind Farm Renewable Energy Project',
+                'description': 'Clean energy generation through wind power reducing reliance on fossil fuels.',
+                'project_type': 'renewable_energy',
+                'verification_standard': 'Gold Standard',
+                'verification_body': 'Gold Standard Foundation',
+                'registry_url': 'https://registry.goldstandard.org/projects/details/2002',
+                'country': 'India',
+                'region': 'Gujarat',
+                'developer': 'Renewable Energy Solutions Ltd',
+                'price_per_credit': Decimal('15.75'),
+                'total_credits_issued': 180000,
+                'available_credits': 90000,
+                'vintage_year': 2023,
+                'co_benefits': ['Clean Energy Access', 'Job Creation', 'Air Quality Improvement'],
+                'featured': True,
+                'trazo_verified': True,
+                'status': 'active'
+            },
+            {
+                'project_id': 'CAR-3003',
+                'name': 'Improved Agricultural Practices',
+                'description': 'Sustainable farming methods reducing emissions and improving soil health.',
+                'project_type': 'agriculture',
+                'verification_standard': 'CAR',
+                'verification_body': 'Climate Action Reserve',
+                'registry_url': 'https://thereserve2.apx.com/myModule/rpt/myrpt.asp?r=111&h=3003',
+                'country': 'United States',
+                'region': 'California',
+                'developer': 'Sustainable Agriculture Coalition',
+                'price_per_credit': Decimal('18.25'),
+                'total_credits_issued': 95000,
+                'available_credits': 47500,
+                'vintage_year': 2023,
+                'co_benefits': ['Soil Health', 'Water Conservation', 'Biodiversity'],
+                'featured': False,
+                'trazo_verified': True,
+                'status': 'active'
+            },
+            {
+                'project_id': 'ACR-4004',
+                'name': 'Biogas from Agricultural Waste',
+                'description': 'Converting agricultural waste into clean energy while reducing methane emissions.',
+                'project_type': 'waste_management',
+                'verification_standard': 'ACR',
+                'verification_body': 'American Carbon Registry',
+                'registry_url': 'https://acr2.apx.com/myModule/rpt/myrpt.asp?r=111&h=4004',
+                'country': 'United States',
+                'region': 'Iowa',
+                'developer': 'AgriEnergy Solutions',
+                'price_per_credit': Decimal('22.00'),
+                'total_credits_issued': 75000,
+                'available_credits': 37500,
+                'vintage_year': 2023,
+                'co_benefits': ['Waste Reduction', 'Clean Energy', 'Rural Economic Development'],
+                'featured': False,
+                'trazo_verified': False,
+                'status': 'active'
+            },
+            {
+                'project_id': 'VCS-5005',
+                'name': 'Mangrove Restoration Blue Carbon',
+                'description': 'Restoring coastal mangrove ecosystems for carbon sequestration and coastal protection.',
+                'project_type': 'blue_carbon',
+                'verification_standard': 'VCS',
+                'verification_body': 'Verra',
+                'registry_url': 'https://registry.verra.org/app/projectDetail/VCS/5005',
+                'country': 'Philippines',
+                'region': 'Mindanao',
+                'developer': 'Coastal Conservation Alliance',
+                'price_per_credit': Decimal('28.50'),
+                'total_credits_issued': 45000,
+                'available_credits': 22500,
+                'vintage_year': 2023,
+                'co_benefits': ['Coastal Protection', 'Marine Biodiversity', 'Fisheries Enhancement'],
+                'featured': True,
+                'trazo_verified': True,
+                'status': 'active'
+            }
+        ]
+
+        for project_data in projects_data:
+            project, created = CertifiedOffsetProject.objects.get_or_create(
+                project_id=project_data['project_id'],
+                defaults=project_data
+            )
+            if created:
+                self.stdout.write(
+                    self.style.SUCCESS(f'Created project: {project.name}')
+                )
+            else:
+                self.stdout.write(
+                    self.style.WARNING(f'Project already exists: {project.name}')
+                )
+
+# File: trazo-back/carbon/management/commands/create_sample_offsets.py (NEW FILE)
+class Command(BaseCommand):
+    help = 'Create sample offset entries for Establishment La Primavera'
+
+    def handle(self, *args, **options):
+        establishment_id = options['establishment_id']
+
+        try:
+            establishment = Establishment.objects.get(id=establishment_id)
+            self.stdout.write(f'Creating sample offsets for: {establishment.name}')
+
+            # Sample offset entries with different verification levels
+            sample_offsets = [
+                {
+                    'type': 'offset',
+                    'source': 'tree_planting',
+                    'amount': 50.0,
+                    'description': 'Planted 25 native trees on farm perimeter',
+                    'verification_level': 'self_reported',
+                    'offset_project_type': 'on_farm',
+                    'evidence_photos': ['tree_planting_1.jpg', 'tree_planting_2.jpg'],
+                    'gps_coordinates': {'latitude': 40.7128, 'longitude': -74.0060}
+                },
+                {
+                    'type': 'offset',
+                    'source': 'cover_crops',
+                    'amount': 75.0,
+                    'description': 'Cover crop implementation across 10 acres',
+                    'verification_level': 'community_verified',
+                    'offset_project_type': 'on_farm',
+                    'attestation_count': 4,
+                    'community_attestations': [
+                        {'attester': 'John Smith - Neighbor Farmer', 'date': '2024-01-15'},
+                        {'attester': 'Maria Garcia - Agricultural Extension', 'date': '2024-01-16'},
+                        {'attester': 'Bob Wilson - Farm Cooperative', 'date': '2024-01-17'},
+                        {'attester': 'Lisa Chen - Soil Specialist', 'date': '2024-01-18'}
+                    ]
+                },
+                {
+                    'type': 'offset',
+                    'source': 'certified_credits',
+                    'amount': 100.0,
+                    'description': 'Purchased verified carbon credits from Amazon conservation project',
+                    'verification_level': 'third_party_verified',
+                    'offset_project_type': 'certified_marketplace',
+                    'verified_by': 'Verra Registry',
+                    'external_verification_id': 'VCS-1001-TX-001'
+                },
+                {
+                    'type': 'offset',
+                    'source': 'composting',
+                    'amount': 25.0,
+                    'description': 'Implemented on-farm composting system',
+                    'verification_level': 'self_reported',
+                    'offset_project_type': 'on_farm',
+                    'evidence_documents': ['composting_plan.pdf', 'waste_reduction_report.pdf']
+                },
+                {
+                    'type': 'offset',
+                    'source': 'renewable_energy',
+                    'amount': 150.0,
+                    'description': 'Solar panel installation reducing grid dependency',
+                    'verification_level': 'community_verified',
+                    'offset_project_type': 'on_farm',
+                    'attestation_count': 3,
+                    'evidence_photos': ['solar_installation_1.jpg', 'solar_installation_2.jpg']
+                }
+            ]
+
+            created_count = 0
+            for offset_data in sample_offsets:
+                # Calculate trust score and effective amount
+                trust_scores = {
+                    'self_reported': 0.5,
+                    'community_verified': 0.75,
+                    'third_party_verified': 1.0
+                }
+
+                trust_score = trust_scores[offset_data['verification_level']]
+                effective_amount = offset_data['amount'] * trust_score
+
+                carbon_entry = CarbonEntry.objects.create(
+                    establishment=establishment,
+                    type=offset_data['type'],
+                    source=offset_data['source'],
+                    amount=offset_data['amount'],
+                    co2e_amount=offset_data['amount'],
+                    description=offset_data['description'],
+                    year=timezone.now().year,
+                    verification_level=offset_data['verification_level'],
+                    offset_project_type=offset_data['offset_project_type'],
+                    trust_score=trust_score,
+                    effective_amount=effective_amount,
+                    evidence_photos=offset_data.get('evidence_photos', []),
+                    evidence_documents=offset_data.get('evidence_documents', []),
+                    gps_coordinates=offset_data.get('gps_coordinates', {}),
+                    community_attestations=offset_data.get('community_attestations', []),
+                    attestation_count=offset_data.get('attestation_count', 0),
+                    verified_by=offset_data.get('verified_by', ''),
+                    external_verification_id=offset_data.get('external_verification_id', ''),
+                    usda_verified=True,
+                    verification_status='factors_verified'
+                )
+
+                created_count += 1
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'Created {offset_data["verification_level"]} offset: {offset_data["description"]} '
+                        f'({offset_data["amount"]} kg CO2e, {effective_amount} kg effective)'
+                    )
+                )
+
+            self.stdout.write(
+                self.style.SUCCESS(f'Successfully created {created_count} sample offset entries')
+            )
+
+        except Establishment.DoesNotExist:
+            self.stdout.write(
+                self.style.ERROR(f'Establishment with ID {establishment_id} not found')
+            )
+```
+
+**Deliverables:**
+
+- Enhanced project redirection system with registry URLs
+- Sample certified projects with 5 diverse verification standards
+- Sample offset entries for La Primavera with all verification levels
+- Interactive toast notifications with "View Project" buttons
+
+#### **Week 7-8: Smart Event Templates Integration**
 
 **Priority 1: Connect Templates to QuickAddEvent Interface**
 
@@ -1572,11 +1981,21 @@ All errors return standardized format:
 
 **Technical Performance:**
 
+- **Carbon Offset Verification**: 3-tier system with trust scoring implemented
+- **Project Redirection**: Registry URL integration with interactive notifications
 - **Template Integration**: Connect to QuickAddEvent interface
 - **Voice Recognition**: Multi-language support (English, Spanish, Portuguese)
 - **Mobile Enhancement**: Field boundary validation with GPS
 - **API Response Time**: <200ms average (maintain current performance)
 - **Database Query Performance**: <100ms for 95% of queries
+
+**Carbon Offset System:**
+
+- **Verification Levels**: Self-reported (50%), Community (75%), Certified (100%)
+- **Trust Score Calculation**: Automatic effective amount calculation
+- **Project Marketplace**: 5 certified projects with registry URLs
+- **Evidence Management**: Photo/document upload system
+- **Registry Integration**: Direct links to VCS, Gold Standard, CAR, ACR registries
 
 ### **🎯 Phase 3-6 Targets**
 
@@ -2039,6 +2458,86 @@ class USDADataQualityFramework:
 - **Confidence-Based Validation**: 40-95% scoring system for automatic approval
 - **Production-Ready Infrastructure**: Mainnet deployment with comprehensive monitoring
 - **Advanced Compliance**: Automated USDA compliance tracking with audit trails
+
+---
+
+## 🆕 **LATEST ENHANCEMENT: CARBON OFFSET VERIFICATION SYSTEM**
+
+### **Month 2 Implementation: Project Redirection & Anti-Greenwashing**
+
+**Completed Features:**
+
+- **3-Tier Verification System**: Self-reported (50%), Community (75%), Certified (100%) trust scoring
+- **Project Redirection**: Registry URL integration replacing payment processing
+- **Sample Data Creation**: 5 certified projects + 5 offset entries for La Primavera
+- **Interactive UI**: Enhanced toast notifications with "View Project" buttons
+- **Trust Score Calculation**: Automatic effective amount calculation preventing over-crediting
+
+**Technical Implementation:**
+
+```typescript
+// Enhanced ModernOffsetModal with project redirection
+const handleProjectRedirection = (project: CertifiedProject, result: any) => {
+  toast({
+    title: "Offset Entry Created!",
+    description: `Entry created with ${Math.round(
+      result.trust_score * 100
+    )}% trust score. Click "View Project" to visit the registry for verification.`,
+    render: ({ onClose: closeToast }) => (
+      <Alert status="success" variant="solid">
+        <AlertIcon />
+        <Box flex="1">
+          <AlertTitle>Offset Entry Created!</AlertTitle>
+          <AlertDescription fontSize="sm">
+            Entry created with {Math.round(result.trust_score * 100)}% trust
+            score.
+          </AlertDescription>
+          <HStack mt={2} spacing={2}>
+            <Button
+              size="sm"
+              colorScheme="whiteAlpha"
+              variant="outline"
+              onClick={() => {
+                window.open(project.registry_url || "#", "_blank");
+                closeToast();
+              }}
+            >
+              View Project
+            </Button>
+            <Button size="sm" variant="ghost" onClick={closeToast}>
+              Close
+            </Button>
+          </HStack>
+        </Box>
+      </Alert>
+    ),
+  });
+};
+```
+
+**Management Commands:**
+
+```python
+# Create certified projects with registry URLs
+python manage.py create_certified_projects
+
+# Create sample offsets for La Primavera
+python manage.py create_sample_offsets --establishment-id=14
+```
+
+**Registry Integration:**
+
+- **VCS Projects**: https://registry.verra.org/app/projectDetail/VCS/{id}
+- **Gold Standard**: https://registry.goldstandard.org/projects/details/{id}
+- **CAR Projects**: https://thereserve2.apx.com/myModule/rpt/myrpt.asp?r=111&h={id}
+- **ACR Projects**: https://acr2.apx.com/myModule/rpt/myrpt.asp?r=111&h={id}
+
+**Anti-Greenwashing Impact:**
+
+- **Revenue Protection**: Trust score discounting prevents over-crediting
+- **Consumer Trust**: Transparent effective amounts always displayed
+- **Market Differentiation**: Industry-leading verification transparency
+- **Regulatory Compliance**: Auditable carbon tracking with external verification
 
 ---
 

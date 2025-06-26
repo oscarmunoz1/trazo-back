@@ -228,6 +228,18 @@ OPENAI_MODEL = config('OPENAI_MODEL', default='gpt-3.5-turbo')
 OPENAI_MAX_TOKENS = config('OPENAI_MAX_TOKENS', default=500, cast=int)
 OPENAI_TEMPERATURE = config('OPENAI_TEMPERATURE', default=0.3, cast=float)
 
+# ICR (International Carbon Registry) API Configuration
+ICR_SANDBOX_URL = config('ICR_SANDBOX_URL', default='https://sandbox-api.carbonregistry.com')
+ICR_PRODUCTION_URL = config('ICR_PRODUCTION_URL', default='https://api.carbonregistry.com')
+ICR_API_KEY = config('ICR_API_KEY', default='')
+USE_ICR_SANDBOX = config('USE_ICR_SANDBOX', default=True, cast=bool)
+
+# Legacy Registry URLs (for documentation - these APIs don't exist publicly)
+VCS_REGISTRY_URL = config('VCS_REGISTRY_URL', default='https://registry.verra.org/api/v1')
+VCS_API_KEY = config('VCS_API_KEY', default='')
+GOLD_STANDARD_API_URL = config('GOLD_STANDARD_API_URL', default='https://api.goldstandard.org/v1')
+GOLD_STANDARD_API_KEY = config('GOLD_STANDARD_API_KEY', default='')
+
 EMAIL_HOST = config("EMAIL_HOST", default="smtp.sendgrid.net")
 EMAIL_HOST_USER = "apikey"
 EMAIL_HOST_PASSWORD = config("SENDGRID_API_KEY", default=None)

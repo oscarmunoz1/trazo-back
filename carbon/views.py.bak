@@ -745,7 +745,7 @@ class CarbonEstablishmentSummaryViewSet(viewsets.ViewSet):
             net_carbon = total_emissions - total_offsets
             
             # Calculate carbon score (0-100)
-            carbon_score = 85  # Default score
+            carbon_score = 0  # Default score for no data
             if total_emissions > 0:
                 offset_percentage = min(100, (total_offsets / total_emissions) * 100)
                 if offset_percentage >= 100:
@@ -754,6 +754,8 @@ class CarbonEstablishmentSummaryViewSet(viewsets.ViewSet):
                     carbon_score = max(10, min(90, offset_percentage * 0.85))
             elif total_offsets > 0:
                 carbon_score = 95  # Excellent if only offsets
+            elif total_emissions == 0 and total_offsets == 0:
+                carbon_score = 0  # No data available - cannot calculate score
             
             # Get recent entries for debugging
             recent_entries = entries.order_by('-timestamp')[:5]

@@ -887,4 +887,173 @@ def issue_carbon_credits(production_id, credits_amount):
         return {'status': 'error', 'message': 'Production not found'}
     except Exception as e:
         logger.error(f"Error issuing credits for production {production_id}: {str(e)}")
-        return {'status': 'error', 'message': str(e)} 
+        return {'status': 'error', 'message': str(e)}
+
+@shared_task
+def schedule_monthly_audits():
+    """Monthly task to schedule random audits"""
+    try:
+        from .services.audit_scheduler import AuditScheduler
+        
+        scheduler = AuditScheduler()
+        result = scheduler.schedule_random_audits()
+        
+        logger.info(f"Monthly audit scheduling completed: {result}")
+        return f"Scheduled {result['count']} audits"
+        
+    except Exception as e:
+        logger.error(f"Error in schedule_monthly_audits: {e}")
+        return f"Error scheduling audits: {str(e)}"
+
+@shared_task
+def process_pending_verifications():
+    """Process pending verification requests"""
+    try:
+        from .models import CarbonEntry
+        from .services.verification_service import VerificationService
+        
+        verification_service = VerificationService()
+        pending_entries = CarbonEntry.objects.filter(
+            type='offset',
+            verification_level__in=['self_reported', 'community_verified'],
+            audit_status='pending'
+        )
+
+        processed_count = 0
+        for entry in pending_entries:
+            try:
+                result = verification_service.verify_offset_entry(entry)
+                if result['approved']:
+                    entry.audit_status = 'passed'
+                else:
+                    entry.audit_status = 'failed'
+                entry.save()
+                processed_count += 1
+            except Exception as e:
+                logger.error(f"Error processing verification for entry {entry.id}: {e}")
+
+        logger.info(f"Processed {processed_count} verification requests")
+        return f"Processed {processed_count} verification requests"
+        
+    except Exception as e:
+        logger.error(f"Error in process_pending_verifications: {e}")
+        return f"Error processing verifications: {str(e)}"
+
+@shared_task
+def check_overdue_audits():
+    """Check for overdue audits and send reminders"""
+    try:
+        from .models import VerificationAudit
+        from .services.audit_scheduler import AuditScheduler
+        
+        # Find audits that are overdue (more than 7 days past audit_date)
+        overdue_date = timezone.now() - timedelta(days=7)
+        overdue_audits = VerificationAudit.objects.filter(
+            result='pending',
+            audit_date__lt=overdue_date
+        ).select_related('carbon_entry', 'carbon_entry__created_by')
+
+        scheduler = AuditScheduler()
+        reminder_count = 0
+        
+        for audit in overdue_audits:
+            try:
+                # Send reminder notification
+                if scheduler.send_audit_notification(audit.carbon_entry):
+                    reminder_count += 1
+            except Exception as e:
+                logger.error(f"Error sending reminder for audit {audit.id}: {e}")
+
+        logger.info(f"Sent {reminder_count} audit reminders")
+        return f"Sent {reminder_count} audit reminders"
+        
+    except Exception as e:
+        logger.error(f"Error in check_overdue_audits: {e}")
+        return f"Error checking overdue audits: {str(e)}"
+
+@shared_task
+def update_trust_scores():
+    """Update trust scores for all offset entries based on verification level"""
+    try:
+        from .models import CarbonEntry
+        
+        trust_scores = {
+            'self_reported': 0.5,
+            'community_verified': 0.75,
+            'certified_project': 1.0
+        }
+        
+        updated_count = 0
+        for verification_level, trust_score in trust_scores.items():
+            entries = CarbonEntry.objects.filter(
+                type='offset',
+                verification_level=verification_level
+            ).exclude(trust_score=trust_score)
+            
+            for entry in entries:
+                entry.trust_score = trust_score
+                entry.effective_amount = entry.amount * trust_score
+                entry.save()
+                updated_count += 1
+
+        logger.info(f"Updated trust scores for {updated_count} entries")
+        return f"Updated trust scores for {updated_count} entries"
+        
+    except Exception as e:
+        logger.error(f"Error in update_trust_scores: {e}")
+        return f"Error updating trust scores: {str(e)}"
+
+@shared_task
+def validate_registry_verifications():
+    """Validate registry verification IDs against third-party APIs"""
+    try:
+        from .models import CarbonEntry
+        from .services.registry_integration import RegistryIntegrationService
+        
+        registry_service = RegistryIntegrationService()
+        
+        # Find entries with registry verification IDs that need validation
+        entries_to_validate = CarbonEntry.objects.filter(
+            type='offset',
+            verification_level='certified_project',
+            registry_verification_id__isnull=False
+        ).exclude(registry_verification_id='')
+
+        validated_count = 0
+        failed_count = 0
+        
+        for entry in entries_to_validate:
+            try:
+                # Attempt to validate with VCS first, then Gold Standard
+                validation_result = registry_service.validate_project_credentials(
+                    entry.registry_verification_id, 
+                    'vcs'
+                )
+                
+                if not validation_result['verified']:
+                    validation_result = registry_service.validate_project_credentials(
+                        entry.registry_verification_id, 
+                        'gold_standard'
+                    )
+                
+                if validation_result['verified']:
+                    entry.third_party_verification_url = registry_service.get_registry_project_url(
+                        entry.registry_verification_id, 
+                        'vcs' if 'vcs' in validation_result else 'gold_standard'
+                    )
+                    entry.save()
+                    validated_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Failed to validate registry ID {entry.registry_verification_id} for entry {entry.id}")
+                    
+            except Exception as e:
+                logger.error(f"Error validating registry for entry {entry.id}: {e}")
+                failed_count += 1
+
+        logger.info(f"Registry validation completed: {validated_count} validated, {failed_count} failed")
+        return f"Registry validation: {validated_count} validated, {failed_count} failed"
+        
+    except Exception as e:
+        logger.error(f"Error in validate_registry_verifications: {e}")
+        return f"Error validating registries: {str(e)}" 

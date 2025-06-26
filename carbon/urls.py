@@ -97,4 +97,10 @@ urlpatterns = [
     path('blockchain/mint-credits/', views.mint_carbon_credits_batch, name='mint_carbon_credits_batch'),
     path('blockchain/service-stats/', views.get_blockchain_service_stats, name='blockchain_service_stats'),
     path('blockchain/deploy-contract/', views.deploy_carbon_credit_contract, name='deploy_carbon_credit_contract'),
+    
+    # Third-Party Verification API Endpoints (NEW)
+    path('verify-registry-credentials/', views.verify_registry_credentials, name='verify_registry_credentials'),
+    path('entries/<int:carbon_entry_id>/verification-status/', views.get_verification_status, name='get_verification_status'),
+    path('bulk-verify/', views.bulk_verify_entries, name='bulk_verify_entries'),
+    path('methodology-templates/', views.get_methodology_templates, name='get_methodology_templates'),
 ] 
