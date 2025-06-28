@@ -1,17 +1,23 @@
 from typing import Dict, Any, Optional
 from django.utils import timezone
+from django.conf import settings
 from ..models import (
     CarbonOffsetProject,
     CarbonOffsetPurchase,
     CarbonOffsetCertificate,
     CarbonAuditLog
 )
+from .blockchain import blockchain_service, BlockchainUnavailableError
 import logging
 
 logger = logging.getLogger(__name__)
 
 class CarbonOffsetVerificationService:
-    """Service for verifying carbon offset projects and purchases"""
+    """Service for verifying carbon offset projects and purchases with blockchain integration"""
+
+    def __init__(self):
+        self.production_mode = getattr(settings, 'DEBUG', True) == False
+        self.blockchain_required = self.production_mode or getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
 
     def verify_project(self, project: CarbonOffsetProject) -> Dict[str, Any]:
         """
@@ -42,6 +48,9 @@ class CarbonOffsetVerificationService:
             
             # Verify project location
             verification_results['checks']['location'] = self._verify_location(project)
+            
+            # BLOCKCHAIN VERIFICATION - Critical for production
+            verification_results['checks']['blockchain'] = self._verify_blockchain_integration(project)
             
             # Determine overall status
             all_checks_passed = all(check['passed'] for check in verification_results['checks'].values())
@@ -91,6 +100,9 @@ class CarbonOffsetVerificationService:
             
             # Verify certificate
             verification_results['checks']['certificate'] = self._verify_certificate(purchase)
+            
+            # BLOCKCHAIN VERIFICATION for purchase
+            verification_results['checks']['blockchain'] = self._verify_purchase_blockchain(purchase)
             
             # Determine overall status
             all_checks_passed = all(check['passed'] for check in verification_results['checks'].values())
@@ -227,6 +239,59 @@ class CarbonOffsetVerificationService:
             }
         except Exception as e:
             logger.error(f"Error verifying certificate: {str(e)}")
+            return {'passed': False, 'details': str(e)}
+
+    def _verify_blockchain_integration(self, project: CarbonOffsetProject) -> Dict[str, Any]:
+        """Verify project has blockchain verification"""
+        try:
+            # Check if blockchain verification is available and working
+            if self.blockchain_required:
+                try:
+                    # Attempt to verify blockchain connectivity
+                    blockchain_status = blockchain_service._is_blockchain_ready()
+                    if not blockchain_status:
+                        return {
+                            'passed': False,
+                            'details': 'Blockchain verification required but service unavailable'
+                        }
+                    
+                    # Verify project has blockchain record
+                    verification_result = blockchain_service.verify_carbon_record(project.id)
+                    blockchain_verified = verification_result.get('blockchain_verified', False)
+                    
+                    return {
+                        'passed': blockchain_verified,
+                        'details': 'Project verified on blockchain' if blockchain_verified else 'Project not verified on blockchain',
+                        'blockchain_data': verification_result
+                    }
+                except BlockchainUnavailableError:
+                    return {
+                        'passed': False,
+                        'details': 'Blockchain verification required but unavailable'
+                    }
+            else:
+                # Development mode - log but allow
+                logger.warning(f"Blockchain verification skipped for project {project.id} (development mode)")
+                return {
+                    'passed': True,
+                    'details': 'Blockchain verification skipped (development mode)',
+                    'development_mode': True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in blockchain verification: {str(e)}")
+            if self.blockchain_required:
+                return {'passed': False, 'details': f'Blockchain verification failed: {str(e)}'}
+            else:
+                return {'passed': True, 'details': f'Blockchain verification error (allowed in dev): {str(e)}'}
+
+    def _verify_purchase_blockchain(self, purchase: CarbonOffsetPurchase) -> Dict[str, Any]:
+        """Verify purchase has blockchain verification"""
+        try:
+            # For purchases, verify the underlying project has blockchain verification
+            return self._verify_blockchain_integration(purchase.project)
+        except Exception as e:
+            logger.error(f"Error in purchase blockchain verification: {str(e)}")
             return {'passed': False, 'details': str(e)}
 
 # Create a singleton instance

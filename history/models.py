@@ -21,14 +21,14 @@ class History(models.Model):
         (GARDEN, "Garden"),
     )
 
-    name = models.CharField(max_length=30, blank=True, null=True)
+    name = models.CharField(max_length=150, blank=True, null=True, help_text="Production name")
     type = models.CharField(max_length=2, choices=HISTORY_TYPES, blank=True, null=True)
     extra_data = models.JSONField(blank=True, null=True)
     start_date = models.DateTimeField(null=True, blank=True)
     finish_date = models.DateTimeField(null=True, blank=True)
     published = models.BooleanField(default=False, blank=True)
     earning = models.FloatField(default=0)
-    lot_id = models.CharField(max_length=30, blank=True, null=True)
+    lot_id = models.CharField(max_length=50, blank=True, null=True, help_text="Lot identifier")
     description = models.TextField(blank=True, null=True)
     production_amount = models.FloatField(default=0)
     qr_code = models.ImageField(upload_to="qr_codes", blank=True)
@@ -53,9 +53,9 @@ class History(models.Model):
         related_name="histories",
     )
     is_outdoor = models.BooleanField(default=True)
-    age_of_plants = models.CharField(max_length=30, blank=True, null=True)
-    number_of_plants = models.CharField(max_length=30, blank=True, null=True)
-    soil_ph = models.CharField(max_length=30, blank=True, null=True)
+    age_of_plants = models.CharField(max_length=50, blank=True, null=True, help_text="Age of plants/trees")
+    number_of_plants = models.CharField(max_length=50, blank=True, null=True, help_text="Number of plants")
+    soil_ph = models.CharField(max_length=20, blank=True, null=True, help_text="Soil pH level")
     operator = models.ForeignKey(
         "users.User", on_delete=models.SET_NULL, blank=True, null=True, related_name="productions_operated"
     )
@@ -321,7 +321,7 @@ class ProductionEvent(CommonEvent):
 
 
 class GeneralEvent(CommonEvent):
-    name = models.CharField(max_length=90)
+    name = models.CharField(max_length=150, help_text="Event name")
     observation = models.TextField(blank=True, null=True)
     extra_data = models.JSONField(blank=True, null=True)
 
@@ -336,9 +336,9 @@ class HistoryScan(models.Model):
         "users.User", on_delete=models.CASCADE, blank=True, null=True
     )
     date = models.DateTimeField(auto_now_add=True)
-    ip_address = models.CharField(max_length=30, blank=True, null=True)
-    city = models.CharField(max_length=30, blank=True, null=True)
-    country = models.CharField(max_length=30, blank=True, null=True)
+    ip_address = models.CharField(max_length=45, blank=True, null=True, help_text="IP address (IPv4/IPv6)")
+    city = models.CharField(max_length=100, blank=True, null=True, help_text="Scanner city")
+    country = models.CharField(max_length=100, blank=True, null=True, help_text="Scanner country")
     comment = models.TextField(blank=True, null=True)
 
 
@@ -412,6 +412,46 @@ class SoilManagementEvent(CommonEvent):
     class Meta:
         verbose_name = "Soil Management Event"
         verbose_name_plural = "Soil Management Events"
+
+
+class BusinessEvent(CommonEvent):
+    """Events related to sales, certifications, compliance, and business operations"""
+    
+    # Business event types
+    HARVEST_SALE = "HS"
+    CERTIFICATION_EARNED = "CE"
+    INSPECTION = "IN"
+    INVENTORY_COUNT = "IC"
+    MARKET_ANALYSIS = "MA"
+    COMPLIANCE_TEST = "CT"
+    CUSTOMER_MEETING = "CM"
+    
+    BUSINESS_TYPE_CHOICES = [
+        (HARVEST_SALE, "Harvest Sale"),
+        (CERTIFICATION_EARNED, "Certification Earned"),
+        (INSPECTION, "Inspection"),
+        (INVENTORY_COUNT, "Inventory Count"),
+        (MARKET_ANALYSIS, "Market Analysis"),
+        (COMPLIANCE_TEST, "Compliance Test"),
+        (CUSTOMER_MEETING, "Customer Meeting"),
+    ]
+    
+    type = models.CharField(
+        max_length=2, choices=BUSINESS_TYPE_CHOICES, default=HARVEST_SALE
+    )
+    sale_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    buyer_information = models.CharField(max_length=200, blank=True)
+    certification_type = models.CharField(max_length=100, blank=True)
+    inspector_name = models.CharField(max_length=100, blank=True)
+    compliance_status = models.CharField(max_length=50, blank=True)  # Pass, Fail, Pending
+    market_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    customer_feedback = models.TextField(blank=True)
+    business_impact = models.CharField(max_length=50, blank=True)  # Positive, Negative, Neutral
+    extra_data = models.JSONField(blank=True, null=True)
+    
+    class Meta:
+        verbose_name = "Business Event"
+        verbose_name_plural = "Business Events"
 
 
 class PestManagementEvent(CommonEvent):

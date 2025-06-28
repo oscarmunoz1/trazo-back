@@ -3,6 +3,7 @@ from django.utils import timezone
 from typing import Dict, Any, Optional, List
 from ..models import CarbonEntry, CarbonSource, USDAComplianceRecord, RegionalEmissionFactor, USDACalculationAudit
 from .enhanced_usda_factors import EnhancedUSDAFactors, USDAValidationResult
+from .emission_factors import emission_factors
 import time
 import logging
 
@@ -16,18 +17,75 @@ class EventCarbonCalculator:
     Enhanced with regional USDA factors, real-time API integration, and compliance validation.
     """
 
-    # USDA Emission Factors (kg CO2e per unit)
-    USDA_FERTILIZER_FACTORS = {
-        'nitrogen': 5.86,    # kg CO2e per kg N (USDA default)
-        'phosphorus': 0.20,  # kg CO2e per kg P2O5
-        'potassium': 0.15,   # kg CO2e per kg K2O
-    }
+    # USDA Emission Factors (kg CO2e per unit) - Now sourced from centralized registry
+    @property
+    def USDA_FERTILIZER_FACTORS(self):
+        """Get USDA fertilizer factors from centralized registry (legacy compatibility)"""
+        return {
+            'nitrogen': emission_factors.get_fertilizer_factor('nitrogen')['value'],
+            'phosphorus': emission_factors.get_fertilizer_factor('phosphorus')['value'],
+            'potassium': emission_factors.get_fertilizer_factor('potassium')['value'],
+        }
+    
+    def _get_climate_aware_fertilizer_factors(self, event, application_method: str = 'broadcast') -> Dict[str, float]:
+        """
+        Get climate-aware fertilizer factors based on farm location and application method.
+        Uses the new corrected USDA values with climate and application adjustments.
+        """
+        try:
+            # Get farm location
+            latitude, longitude, state = self._get_farm_coordinates(event)
+            
+            # Get enhanced factors with climate and application method adjustments
+            enhanced_factors = emission_factors.get_enhanced_fertilizer_factors(
+                nutrients=['nitrogen', 'phosphorus', 'potassium'],
+                latitude=latitude,
+                longitude=longitude,
+                state=state,
+                application_methods={
+                    'nitrogen': application_method,
+                    'phosphorus': application_method,
+                    'potassium': application_method
+                }
+            )
+            
+            # Extract values for calculation
+            return {
+                'nitrogen': enhanced_factors['nitrogen']['value'],
+                'phosphorus': enhanced_factors['phosphorus']['value'],
+                'potassium': enhanced_factors['potassium']['value'],
+                'metadata': {
+                    'climate_zone': enhanced_factors['nitrogen']['climate_zone'],
+                    'precipitation': enhanced_factors['nitrogen']['annual_precipitation'],
+                    'application_method': application_method,
+                    'adjustments_applied': enhanced_factors['nitrogen']['adjustments_applied'],
+                    'version': enhanced_factors['nitrogen']['version']
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting climate-aware fertilizer factors: {e}")
+            # Fallback to base factors
+            return {
+                'nitrogen': emission_factors.get_fertilizer_factor('nitrogen')['value'],
+                'phosphorus': emission_factors.get_fertilizer_factor('phosphorus')['value'],
+                'potassium': emission_factors.get_fertilizer_factor('potassium')['value'],
+                'metadata': {
+                    'climate_zone': 'unknown',
+                    'application_method': application_method,
+                    'fallback_used': True,
+                    'error': str(e)
+                }
+            }
 
-    FUEL_EMISSION_FACTORS = {
-        'diesel': 2.68,      # kg CO2e per liter
-        'gasoline': 2.31,    # kg CO2e per liter
-        'natural_gas': 2.03, # kg CO2e per m³
-    }
+    @property
+    def FUEL_EMISSION_FACTORS(self):
+        """Get fuel emission factors from centralized registry"""
+        return {
+            'diesel': emission_factors.get_fuel_factor('diesel')['value'],
+            'gasoline': emission_factors.get_fuel_factor('gasoline')['value'],
+            'natural_gas': emission_factors.get_fuel_factor('natural_gas')['value'],
+        }
 
     APPLICATION_EFFICIENCY = {
         'broadcast': 0.7,
@@ -104,16 +162,22 @@ class EventCarbonCalculator:
     def __init__(self):
         self.current_year = timezone.now().year
         self.enhanced_usda = EnhancedUSDAFactors()
+        
+        # Log initialization with centralized factors
+        logger.info(f"EventCarbonCalculator initialized with standardized USDA factors v{emission_factors.VERSION}")
+        logger.info(f"Nitrogen factor: {self.USDA_FERTILIZER_FACTORS['nitrogen']} kg CO2e per kg N (USDA-verified)")
 
     def _get_usda_emission_factors(self) -> Dict[str, float]:
         """Get base USDA emission factors for compatibility"""
+        # Use centralized factors to ensure consistency
+        factors = emission_factors.get_all_factors_simple()
         return {
-            'nitrogen': self.USDA_FERTILIZER_FACTORS['nitrogen'],
-            'phosphorus': self.USDA_FERTILIZER_FACTORS['phosphorus'],
-            'potassium': self.USDA_FERTILIZER_FACTORS['potassium'],
-            'diesel': self.FUEL_EMISSION_FACTORS['diesel'],
-            'gasoline': self.FUEL_EMISSION_FACTORS['gasoline'],
-            'natural_gas': self.FUEL_EMISSION_FACTORS['natural_gas']
+            'nitrogen': factors['nitrogen'],
+            'phosphorus': factors['phosphorus'],
+            'potassium': factors['potassium'],
+            'diesel': factors['diesel'],
+            'gasoline': factors['gasoline'],
+            'natural_gas': factors['natural_gas']
         }
 
     def _get_establishment_location(self, event) -> tuple:
@@ -130,6 +194,36 @@ class EventCarbonCalculator:
         except Exception as e:
             logger.error(f"Error getting establishment location: {e}")
         return 'Unknown', None
+    
+    def _get_farm_coordinates(self, event) -> tuple:
+        """
+        Extract farm coordinates and location information from event.
+        Returns (latitude, longitude, state)
+        """
+        try:
+            # Try to get coordinates from establishment
+            if (hasattr(event, 'history') and event.history and 
+                hasattr(event.history, 'parcel') and event.history.parcel and
+                hasattr(event.history.parcel, 'establishment') and event.history.parcel.establishment):
+                establishment = event.history.parcel.establishment
+                
+                # Get coordinates if available
+                latitude = getattr(establishment, 'latitude', None)
+                longitude = getattr(establishment, 'longitude', None)
+                state = getattr(establishment, 'state', 'CA')  # Default to California
+                
+                # If coordinates are available, use them
+                if latitude is not None and longitude is not None:
+                    return float(latitude), float(longitude), state
+                
+                # If no coordinates, use state for regional estimates
+                return None, None, state
+            
+        except Exception as e:
+            logger.error(f"Error getting farm coordinates: {e}")
+        
+        # Default fallback - assume California for unknown locations
+        return None, None, 'CA'
 
     def _get_real_time_usda_factors(self, crop_type: str, state: str) -> Dict[str, float]:
         """NEW METHOD: Get real-time USDA emission factors"""
@@ -427,15 +521,26 @@ class EventCarbonCalculator:
             # Calculate base emissions from nutrients
             base_emissions = 0.0
             n_emissions = p_emissions = k_emissions = 0.0
+            climate_metadata = {}
             
             if event.type == 'FE':  # Fertilizer
-                # Calculate emissions from N, P, K
-                n_emissions = (npk_content['N'] / 100) * volume_liters * self.USDA_FERTILIZER_FACTORS['nitrogen']
-                p_emissions = (npk_content['P'] / 100) * volume_liters * self.USDA_FERTILIZER_FACTORS['phosphorus']
-                k_emissions = (npk_content['K'] / 100) * volume_liters * self.USDA_FERTILIZER_FACTORS['potassium']
+                # Get climate-aware fertilizer factors with application method adjustments
+                normalized_method = self._normalize_application_method_for_factors(application_method)
+                climate_factors = self._get_climate_aware_fertilizer_factors(event, normalized_method)
+                climate_metadata = climate_factors.get('metadata', {})
                 
-                # Apply crop-specific efficiency
+                # Calculate emissions from N, P, K using climate-adjusted factors
+                n_emissions = (npk_content['N'] / 100) * volume_liters * climate_factors['nitrogen']
+                p_emissions = (npk_content['P'] / 100) * volume_liters * climate_factors['phosphorus']
+                k_emissions = (npk_content['K'] / 100) * volume_liters * climate_factors['potassium']
+                
+                # Apply legacy crop-specific efficiency (maintained for backward compatibility)
                 base_emissions = (n_emissions + p_emissions + k_emissions) * efficiency
+                
+                logger.info(f"Climate-aware fertilizer calculation: N={climate_factors['nitrogen']:.2f}, "
+                           f"P={climate_factors['phosphorus']:.2f}, K={climate_factors['potassium']:.2f} "
+                           f"(climate: {climate_metadata.get('climate_zone', 'unknown')}, "
+                           f"method: {normalized_method})")
                 
                 # Add crop-specific production impact
                 crop_factor = self._get_crop_specific_factor(crop_name)
@@ -461,9 +566,9 @@ class EventCarbonCalculator:
             result = {
                 'co2e': round(base_emissions, 3),
                 'efficiency_score': round(efficiency * 100, 1),
-                'calculation_method': 'usda_emission_factors_crop_specific',
-                'data_source': 'USDA Agricultural Research Service',
-                'verification_status': 'factors_verified',  # Factors are verified, not the specific calculation
+                'calculation_method': 'usda_emission_factors_climate_aware_v3',
+                'data_source': 'USDA Agricultural Research Service - Corrected Research Findings',
+                'verification_status': 'factors_verified',
                 'crop_name': crop_name,
                 'crop_category': crop_category,
                 'breakdown': {
@@ -475,6 +580,19 @@ class EventCarbonCalculator:
                     'volume_liters': volume_liters,
                     'area_hectares': area_hectares,
                     'crop_specific_factor': self._get_crop_specific_factor(crop_name),
+                },
+                'climate_analysis': {
+                    'climate_zone': climate_metadata.get('climate_zone', 'unknown'),
+                    'annual_precipitation': climate_metadata.get('precipitation', 'unknown'),
+                    'application_method': climate_metadata.get('application_method', 'broadcast'),
+                    'adjustments_applied': climate_metadata.get('adjustments_applied', {}),
+                    'emission_factor_version': climate_metadata.get('version', '3.0.0'),
+                    'significant_increases': {
+                        'nitrogen_factor_increase': '88%',
+                        'phosphorus_factor_increase': '525%',
+                        'potassium_factor_increase': '300%',
+                        'reason': 'Corrected USDA research findings - previous values underestimated emissions'
+                    }
                 },
                 'cost_analysis': {
                     'estimated_cost': estimated_cost,
@@ -1129,7 +1247,7 @@ class EventCarbonCalculator:
         return method_str
 
     def _normalize_application_method(self, method: str) -> str:
-        """Normalize application method to standard terms"""
+        """Normalize application method to standard terms (legacy)"""
         method = method.lower()
         if any(word in method for word in ['drip', 'irrigation', 'micro']):
             return 'drip_irrigation'
@@ -1143,6 +1261,24 @@ class EventCarbonCalculator:
             return 'injection'
         else:
             return 'broadcast'  # Default
+    
+    def _normalize_application_method_for_factors(self, method: str) -> str:
+        """Normalize application method for emission factor adjustments"""
+        method = method.lower()
+        
+        # Map to emission factor adjustment categories
+        if any(word in method for word in ['inject', 'subsurface', 'deep']):
+            return 'injected'
+        elif any(word in method for word in ['incorporate', 'till', 'mix']):
+            return 'incorporated'
+        elif any(word in method for word in ['slow', 'controlled', 'coated', 'release']):
+            return 'slow_release'
+        elif any(word in method for word in ['precision', 'variable', 'gps', 'rate']):
+            return 'precision'
+        elif any(word in method for word in ['split', 'multiple', 'sidedress']):
+            return 'split_application'
+        else:
+            return 'broadcast'  # Default baseline method
 
     def _estimate_chemical_cost(self, event, volume_liters: float) -> float:
         """Estimate cost of chemical application"""

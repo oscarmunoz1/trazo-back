@@ -3,6 +3,8 @@ from rest_framework import viewsets, status, generics, permissions
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from django_ratelimit.decorators import ratelimit
+from django.utils.decorators import method_decorator
 from django.db.models import Sum, Avg, F, Q, Count
 from django.utils import timezone
 from datetime import datetime, timedelta
@@ -206,15 +208,20 @@ class EventTemplateViewSet(viewsets.ReadOnlyModelViewSet):
 class CarbonSourceViewSet(viewsets.ModelViewSet):
     queryset = CarbonSource.objects.all()
     serializer_class = CarbonSourceSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
 class CarbonOffsetActionViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = CarbonOffsetAction.objects.all()
     serializer_class = CarbonOffsetActionSerializer
-    permission_classes = []  # Public
+    permission_classes = [permissions.IsAuthenticated]  # Require authentication
 
+@method_decorator(ratelimit(key='user', rate='10/m', method='POST', block=True), name='create')
+@method_decorator(ratelimit(key='user', rate='20/m', method='GET', block=True), name='list')
+@method_decorator(ratelimit(key='user', rate='20/m', method='GET', block=True), name='retrieve')
 class CarbonEntryViewSet(viewsets.ModelViewSet):
     queryset = CarbonEntry.objects.all()
     serializer_class = CarbonEntrySerializer
+    permission_classes = [IsAuthenticated]  # Ensure authentication is required
 
     def get_queryset(self):
         user = self.request.user
@@ -251,6 +258,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
                 
         return queryset
 
+    @ratelimit(key='user', rate='5/m', method='POST', block=True)
     @action(detail=False, methods=['post'])
     def calculate_emissions(self, request):
         """
@@ -289,6 +297,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @ratelimit(key='user', rate='3/m', method='POST', block=True)
     @action(detail=False, methods=['post'])
     def bulk_create(self, request):
         entries = request.data
@@ -300,6 +309,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @ratelimit(key='user', rate='20/m', method='GET', block=True)
     @action(detail=False, methods=['get'])
     def by_entity(self, request):
         entity_type = request.query_params.get('entity_type')
@@ -380,6 +390,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
         )
         instance.delete()
 
+    @ratelimit(key='user', rate='10/m', method='GET', block=True)
     @action(detail=False, methods=['get'])
     def summary(self, request):
         establishment_id = request.query_params.get('establishment')
@@ -456,6 +467,229 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
         
         return Response(summary_data)
 
+    @ratelimit(key='user', rate='5/m', method='POST', block=True)
+    @action(detail=True, methods=['post'])
+    def upload_evidence_photo(self, request, pk=None):
+        """
+        Upload photo evidence for carbon offset verification (MVP-aligned).
+        
+        Supports secure photo upload with validation for enhanced self-reported verification.
+        Part of Trazo's commitment to agricultural carbon transparency.
+        """
+        try:
+            from .services.photo_evidence_service import photo_evidence_service
+            
+            carbon_entry = self.get_object()
+            
+            # Check permissions - user must own this entry or be admin
+            if carbon_entry.created_by != request.user and not request.user.is_staff:
+                return Response(
+                    {'error': 'Permission denied. You can only upload photos for your own carbon entries.'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if entry type allows photo evidence
+            if carbon_entry.type != 'offset':
+                return Response(
+                    {'error': 'Photo evidence is only supported for offset entries'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get uploaded file
+            if 'photo' not in request.FILES:
+                return Response(
+                    {'error': 'No photo file provided'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            uploaded_file = request.FILES['photo']
+            
+            # Check if entry already has maximum photos
+            current_photos = carbon_entry.evidence_photos or []
+            if len(current_photos) >= photo_evidence_service.MAX_PHOTOS_PER_ENTRY:
+                return Response(
+                    {'error': f'Maximum {photo_evidence_service.MAX_PHOTOS_PER_ENTRY} photos allowed per entry'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Process and store photo
+            file_data = uploaded_file.read()
+            result = photo_evidence_service.process_and_store_photo(
+                file_data=file_data,
+                filename=uploaded_file.name,
+                carbon_entry_id=carbon_entry.id,
+                user_id=request.user.id
+            )
+            
+            if not result['success']:
+                return Response(
+                    {'error': 'Photo upload failed', 'details': result['errors']}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update carbon entry evidence
+            if not carbon_entry.evidence_photos:
+                carbon_entry.evidence_photos = []
+            
+            photo_record = {
+                'photo_id': result['photo_id'],
+                'photo_url': result['photo_url'],
+                'original_filename': uploaded_file.name,
+                'upload_timestamp': result['metadata']['upload_timestamp'],
+                'file_hash': result['metadata']['file_hash'],
+                'file_size': result['metadata']['file_size']
+            }
+            
+            carbon_entry.evidence_photos.append(photo_record)
+            carbon_entry.save()
+            
+            # Log the photo upload
+            CarbonAuditLog.objects.create(
+                carbon_entry=carbon_entry,
+                user=request.user,
+                action='upload_photo_evidence',
+                details=f'Photo evidence uploaded: {uploaded_file.name}'
+            )
+            
+            logger.info(f"Photo evidence uploaded for carbon entry {carbon_entry.id} by user {request.user.id}")
+            
+            return Response({
+                'success': True,
+                'photo_record': photo_record,
+                'total_photos': len(carbon_entry.evidence_photos),
+                'message': 'Photo evidence uploaded successfully'
+            })
+            
+        except Exception as e:
+            logger.error(f"Photo upload error for carbon entry {pk}: {e}")
+            return Response(
+                {'error': 'Upload failed', 'details': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @ratelimit(key='user', rate='10/m', method='DELETE', block=True) 
+    @action(detail=True, methods=['delete'])
+    def delete_evidence_photo(self, request, pk=None):
+        """
+        Delete photo evidence from carbon offset entry.
+        """
+        try:
+            from .services.photo_evidence_service import photo_evidence_service
+            
+            carbon_entry = self.get_object()
+            
+            # Check permissions
+            if carbon_entry.created_by != request.user and not request.user.is_staff:
+                return Response(
+                    {'error': 'Permission denied'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            photo_id = request.query_params.get('photo_id')
+            if not photo_id:
+                return Response(
+                    {'error': 'photo_id parameter required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Find and remove photo from evidence list
+            evidence_photos = carbon_entry.evidence_photos or []
+            photo_to_delete = None
+            updated_photos = []
+            
+            for photo in evidence_photos:
+                if photo.get('photo_id') == photo_id:
+                    photo_to_delete = photo
+                else:
+                    updated_photos.append(photo)
+            
+            if not photo_to_delete:
+                return Response(
+                    {'error': 'Photo not found'}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Delete from storage
+            photo_evidence_service.delete_photo(photo_to_delete['photo_url'])
+            
+            # Update carbon entry
+            carbon_entry.evidence_photos = updated_photos
+            carbon_entry.save()
+            
+            # Log the deletion
+            CarbonAuditLog.objects.create(
+                carbon_entry=carbon_entry,
+                user=request.user,
+                action='delete_photo_evidence',
+                details=f'Photo evidence deleted: {photo_to_delete.get("original_filename", "unknown")}'
+            )
+            
+            return Response({
+                'success': True,
+                'deleted_photo_id': photo_id,
+                'remaining_photos': len(updated_photos)
+            })
+            
+        except Exception as e:
+            logger.error(f"Photo deletion error: {e}")
+            return Response(
+                {'error': 'Deletion failed', 'details': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @ratelimit(key='user', rate='20/m', method='GET', block=True)
+    @action(detail=True, methods=['get'])
+    def get_evidence_photos(self, request, pk=None):
+        """
+        Get all photo evidence for a carbon offset entry.
+        """
+        try:
+            carbon_entry = self.get_object()
+            
+            # Basic permission check - users can view their own or public QR entries
+            if (carbon_entry.created_by != request.user and 
+                not request.user.is_staff and 
+                not request.query_params.get('qr_view')):
+                return Response(
+                    {'error': 'Permission denied'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            evidence_photos = carbon_entry.evidence_photos or []
+            
+            # For QR public view, only return photo URLs without metadata
+            if request.query_params.get('qr_view'):
+                public_photos = [
+                    {
+                        'photo_url': photo['photo_url'],
+                        'upload_date': photo.get('upload_timestamp', '').split('T')[0]  # Date only
+                    }
+                    for photo in evidence_photos
+                ]
+                return Response({
+                    'photos': public_photos,
+                    'total_count': len(public_photos),
+                    'verification_level': carbon_entry.verification_level,
+                    'entry_type': carbon_entry.type
+                })
+            
+            # Full metadata for entry owner/admin
+            return Response({
+                'photos': evidence_photos,
+                'total_count': len(evidence_photos),
+                'max_photos_allowed': 5,
+                'verification_level': carbon_entry.verification_level,
+                'entry_type': carbon_entry.type,
+                'evidence_requirements_met': carbon_entry.evidence_requirements_met
+            })
+            
+        except Exception as e:
+            logger.error(f"Get evidence photos error: {e}")
+            return Response(
+                {'error': 'Failed to retrieve photos'}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 # Carbon Footprint Calculator and Analysis Endpoints
 
@@ -463,6 +697,7 @@ class CarbonEntryViewSet(viewsets.ModelViewSet):
 # Real-time Carbon Calculation API
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@ratelimit(key='user', rate='10/m', method='POST', block=True)
 def calculate_event_carbon_impact(request):
     """
     Real-time carbon calculation API for event forms.
@@ -1566,6 +1801,12 @@ class PublicProductionViewSet(viewsets.ViewSet):
             # === SOCIAL PROOF DATA ===
             social_proof = self._calculate_social_proof(production)
             
+            # === TRUST SCORE CALCULATION ===
+            trust_score = self._calculate_trust_score(
+                production, carbon_score, industry_percentile, 
+                blockchain_verification, social_proof
+            )
+            
             # === UNIFIED RESPONSE DATA ===
             response_data = {
                 # Essential product info
@@ -1619,6 +1860,7 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 'badges': badges,
                 'blockchainVerification': blockchain_verification,
                 'socialProof': social_proof,
+                'trustScore': trust_score,
                 
                 # Metadata
                 'verificationDate': timezone.now().isoformat(),
@@ -2261,6 +2503,110 @@ class PublicProductionViewSet(viewsets.ViewSet):
             return True  # Placeholder - implement actual verification check
         except Exception:
             return False
+    
+    def _calculate_trust_score(self, production, carbon_score, industry_percentile, blockchain_verification, social_proof):
+        """Calculate comprehensive trust score based on multiple factors"""
+        try:
+            trust_score = 40  # Base score
+            
+            # USDA Verification (25 points)
+            if self._check_usda_verification(production):
+                trust_score += 25
+            
+            # Blockchain Verification (20 points)
+            if blockchain_verification and blockchain_verification.get('verified'):
+                trust_score += 20
+            
+            # Reputation/Rating (10 points)
+            reputation = float(production.reputation) if production.reputation else 4.5
+            if reputation >= 4.0:
+                trust_score += 10
+            elif reputation >= 3.5:
+                trust_score += 7
+            elif reputation >= 3.0:
+                trust_score += 4
+            
+            # Carbon Performance (15 points)
+            if carbon_score >= 80:
+                trust_score += 15
+            elif carbon_score >= 70:
+                trust_score += 12
+            elif carbon_score >= 60:
+                trust_score += 8
+            elif carbon_score >= 50:
+                trust_score += 5
+            
+            # Industry Performance (10 points)
+            if industry_percentile >= 80:
+                trust_score += 10
+            elif industry_percentile >= 60:
+                trust_score += 7
+            elif industry_percentile >= 40:
+                trust_score += 4
+            
+            # Social Proof/Community Trust (10 points)
+            total_scans = social_proof.get('totalScans', 0)
+            if total_scans >= 100:
+                trust_score += 10
+            elif total_scans >= 50:
+                trust_score += 7
+            elif total_scans >= 25:
+                trust_score += 5
+            elif total_scans >= 10:
+                trust_score += 3
+            
+            # Data Completeness Bonus (5 points)
+            # Award points for complete data transparency
+            data_completeness = 0
+            if production.start_date and production.finish_date:
+                data_completeness += 1
+            if hasattr(production, 'timeline') or hasattr(production, 'events'):
+                events = getattr(production, 'timeline', getattr(production, 'events', []))
+                if events and len(events) > 5:
+                    data_completeness += 1
+            if production.parcel and production.parcel.polygon:
+                data_completeness += 1
+            if production.parcel and production.parcel.establishment:
+                establishment = production.parcel.establishment
+                if establishment.latitude and establishment.longitude:
+                    data_completeness += 1
+                if establishment.description or establishment.about:
+                    data_completeness += 1
+            
+            trust_score += data_completeness  # Up to 5 bonus points
+            
+            # Cap at 100%
+            trust_score = min(trust_score, 100)
+            
+            return {
+                'overall': trust_score,
+                'breakdown': {
+                    'usda_verification': 25 if self._check_usda_verification(production) else 0,
+                    'blockchain_verification': 20 if blockchain_verification and blockchain_verification.get('verified') else 0,
+                    'reputation': 10 if reputation >= 4.0 else (7 if reputation >= 3.5 else (4 if reputation >= 3.0 else 0)),
+                    'carbon_performance': 15 if carbon_score >= 80 else (12 if carbon_score >= 70 else (8 if carbon_score >= 60 else (5 if carbon_score >= 50 else 0))),
+                    'industry_performance': 10 if industry_percentile >= 80 else (7 if industry_percentile >= 60 else (4 if industry_percentile >= 40 else 0)),
+                    'social_proof': 10 if total_scans >= 100 else (7 if total_scans >= 50 else (5 if total_scans >= 25 else (3 if total_scans >= 10 else 0))),
+                    'data_completeness': data_completeness
+                },
+                'factors': {
+                    'usda_verified': self._check_usda_verification(production),
+                    'blockchain_verified': blockchain_verification and blockchain_verification.get('verified'),
+                    'reputation_score': reputation,
+                    'carbon_score': carbon_score,
+                    'industry_percentile': industry_percentile,
+                    'total_scans': total_scans,
+                    'data_completeness_score': data_completeness
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error calculating trust score: {e}")
+            return {
+                'overall': 50,  # Default safe score
+                'breakdown': {},
+                'factors': {},
+                'error': 'Trust score calculation failed'
+            }
 
 
 class CarbonOffsetViewSet(viewsets.ViewSet):
@@ -2343,7 +2689,7 @@ class CarbonOffsetViewSet(viewsets.ViewSet):
             "source_id": "no_till",  # offset project ID
             "type": "offset",
             "year": 2025,
-            "verification_level": "self_reported",  # self_reported, community_verified, certified_project
+            "verification_level": "self_reported",  # self_reported, certified_project
             "additionality_evidence": "",  # required for ≥100 kg CO2e
             "permanence_plan": "",  # required for ≥1000 kg CO2e
             "methodology_template": "",  # optional
@@ -2487,8 +2833,6 @@ class CarbonOffsetViewSet(viewsets.ViewSet):
                 evidence_photos=data.get('evidence_photos', []),
                 evidence_documents=data.get('evidence_documents', []),
                 # Required fields with default values (only valid model fields)
-                attestation_count=0,
-                community_attestations=[],  # Empty list for JSONB field
                 trust_score=0.5,  # Will be calculated in save()
                 audit_status='pending',
                 additionality_verified=False
@@ -2533,8 +2877,6 @@ class CarbonOffsetViewSet(viewsets.ViewSet):
             buffer_pool_percentage = 0.15  # 15% buffer pool
             if carbon_entry.verification_level == 'self_reported':
                 buffer_pool_percentage = 0.20  # 20% buffer for self-reported
-            elif carbon_entry.verification_level == 'community_verified':
-                buffer_pool_percentage = 0.15  # 15% buffer for community verified
             elif carbon_entry.verification_level == 'certified_project':
                 buffer_pool_percentage = 0.10  # 10% buffer for certified projects
 
@@ -6373,8 +6715,7 @@ def get_verification_status(request, carbon_entry_id):
             'evidence_summary': {
                 'photos_count': len(carbon_entry.evidence_photos or []),
                 'documents_count': len(carbon_entry.evidence_documents or []),
-                'gps_coordinates': bool(getattr(carbon_entry, "gps_coordinates", False)),
-                'community_attestations': carbon_entry.attestation_count
+                'gps_coordinates': bool(getattr(carbon_entry, "gps_coordinates", False))
             }
         }, status=status.HTTP_200_OK)
         

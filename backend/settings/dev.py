@@ -92,10 +92,10 @@ WEATHER_ALERT_THRESHOLDS = {
     'high_humidity': 85  # percentage
 }
 
-# USDA API Configuration
-USDA_NASS_API_KEY = 'EA05CCF0-BCDE-3110-81F4-ABD91AE84C51'
-USDA_ERS_API_KEY = 'hhaQuoUlDBjAGiGXYgDKlSpxqduTza8OatCtQpT6'
-USDA_FOODDATA_API_KEY = 'xbGNSPg4dCJx8m9uE4OtT1L3Ii0F4uOjei9cjYkP'
+# USDA API Configuration - Use environment variables for security
+USDA_NASS_API_KEY = os.environ.get('USDA_NASS_API_KEY', None)
+USDA_ERS_API_KEY = os.environ.get('USDA_ERS_API_KEY', None)
+USDA_FOODDATA_API_KEY = os.environ.get('USDA_FOODDATA_API_KEY', None)
 
 # API Attribution (required by NASS Terms of Service)
 USDA_API_ATTRIBUTION = "This product uses the NASS API but is not endorsed or certified by NASS."

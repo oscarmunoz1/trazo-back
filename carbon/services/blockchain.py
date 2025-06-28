@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 from django.conf import settings
 from django.utils import timezone
 
-# Optional web3 import - if not available, use mock mode
+# Import web3 - required for production blockchain operations
 try:
     from web3 import Web3
     from web3.exceptions import TransactionNotFound, ContractLogicError
@@ -17,16 +17,31 @@ except ImportError:
     TransactionNotFound = Exception
     ContractLogicError = Exception
     WEB3_AVAILABLE = False
-    print("Warning: web3 library not installed. Blockchain service will run in mock mode.")
+    # Log this as a critical error for production environments
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.critical("web3 library not installed. Blockchain functionality unavailable.")
 
 from ..models import CarbonEntry, CarbonReport
+from .secure_key_management import secure_key_manager, get_secure_blockchain_key
+
+
+# Custom exceptions for blockchain operations
+class BlockchainUnavailableError(Exception):
+    """Raised when blockchain is required but unavailable"""
+    pass
+
+
+class BlockchainOperationError(Exception):
+    """Raised when blockchain operation fails"""
+    pass
 
 
 class BlockchainCarbonService:
     """
     Service for creating immutable carbon records on blockchain.
     Implements the Blockchain-Based Carbon Credit Verification feature.
-    Falls back to mock mode if web3 is not available.
+    Production-ready with proper error handling and no mock mode fallbacks.
     """
     
     def __init__(self):
@@ -34,49 +49,100 @@ class BlockchainCarbonService:
         self.web3 = None
         self.contract = None
         self.account = None
-        self.mock_mode = not WEB3_AVAILABLE
+        self.production_mode = getattr(settings, 'DEBUG', True) == False
+        self.blockchain_required = self.production_mode or getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
         self.network_name = getattr(settings, 'BLOCKCHAIN_NETWORK_NAME', 'polygon_amoy')
         self.explorer_url = getattr(settings, 'POLYGON_EXPLORER_URL', 'https://amoy.polygonscan.com')
         
-        if WEB3_AVAILABLE and getattr(settings, 'BLOCKCHAIN_ENABLED', False) and hasattr(settings, 'POLYGON_RPC_URL') and settings.POLYGON_RPC_URL:
-            try:
-                self.web3 = Web3(Web3.HTTPProvider(settings.POLYGON_RPC_URL))
-                
-                if self.web3.is_connected():
-                    print(f"✅ Connected to {self.network_name}: {settings.POLYGON_RPC_URL}")
-                
-                if hasattr(settings, 'CARBON_CONTRACT_ADDRESS') and settings.CARBON_CONTRACT_ADDRESS:
-                    # Try to load ABI from the contracts file first
-                    contract_abi = self._load_contract_abi()
-                    if not contract_abi:
-                        contract_abi = self.get_carbon_contract_abi()
-                    
-                    self.contract = self.web3.eth.contract(
-                        address=settings.CARBON_CONTRACT_ADDRESS,
-                        abi=contract_abi
-                    )
-                    print(f"✅ Contract loaded at: {settings.CARBON_CONTRACT_ADDRESS}")
-                    
-                if hasattr(settings, 'BLOCKCHAIN_PRIVATE_KEY') and settings.BLOCKCHAIN_PRIVATE_KEY:
-                    self.account = self.web3.eth.account.from_key(settings.BLOCKCHAIN_PRIVATE_KEY)
-                    print(f"✅ Wallet connected: {self.account.address}")
-                    
-                    self.mock_mode = False
-                else:
-                    print(f"❌ Failed to connect to {self.network_name}")
-                    self.mock_mode = True
-                    
-            except Exception as e:
-                print(f"❌ Blockchain connection failed: {e}")
-                self.mock_mode = True
-        else:
-            self.mock_mode = True
+        # Import logger
+        import logging
+        self.logger = logging.getLogger(__name__)
+        
+        # Initialize blockchain connection - fail fast in production if unavailable
+        self._initialize_blockchain_connection()
+    
+    def _initialize_blockchain_connection(self):
+        """Initialize blockchain connection with proper error handling"""
+        try:
             if not WEB3_AVAILABLE:
-                print("⚠️  Web3 library not available - running in mock mode")
-            elif not getattr(settings, 'BLOCKCHAIN_ENABLED', False):
-                print("⚠️  Blockchain disabled in settings - running in mock mode")
+                error_msg = "Web3 library not available - blockchain functionality disabled"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.warning(error_msg)
+                return
+            
+            if not getattr(settings, 'BLOCKCHAIN_ENABLED', False):
+                error_msg = "Blockchain disabled in settings"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.warning(error_msg)
+                return
+            
+            if not hasattr(settings, 'POLYGON_RPC_URL') or not settings.POLYGON_RPC_URL:
+                error_msg = "No blockchain RPC URL configured"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.warning(error_msg)
+                return
+            
+            # Initialize Web3 connection
+            self.web3 = Web3(Web3.HTTPProvider(settings.POLYGON_RPC_URL))
+            
+            if not self.web3.is_connected():
+                error_msg = f"Failed to connect to blockchain network: {self.network_name}"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.error(error_msg)
+                return
+            
+            self.logger.info(f"✅ Connected to {self.network_name}: {settings.POLYGON_RPC_URL}")
+            
+            # Load contract
+            if hasattr(settings, 'CARBON_CONTRACT_ADDRESS') and settings.CARBON_CONTRACT_ADDRESS:
+                contract_abi = self._load_contract_abi()
+                if not contract_abi:
+                    contract_abi = self.get_carbon_contract_abi()
+                
+                self.contract = self.web3.eth.contract(
+                    address=settings.CARBON_CONTRACT_ADDRESS,
+                    abi=contract_abi
+                )
+                self.logger.info(f"✅ Contract loaded at: {settings.CARBON_CONTRACT_ADDRESS}")
             else:
-                print("⚠️  No blockchain configuration - running in mock mode")
+                error_msg = "No contract address configured"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.warning(error_msg)
+                return
+            
+            # Load account using secure key management
+            try:
+                blockchain_private_key = get_secure_blockchain_key()
+                if blockchain_private_key:
+                    self.account = self.web3.eth.account.from_key(blockchain_private_key)
+                    self.logger.info(f"✅ Wallet connected securely: {self.account.address}")
+                else:
+                    raise ValueError("No blockchain private key available")
+            except Exception as e:
+                error_msg = f"Failed to load blockchain private key securely: {e}"
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError(error_msg)
+                self.logger.warning(error_msg)
+                
+        except Exception as e:
+            error_msg = f"Blockchain initialization failed: {e}"
+            if self.blockchain_required:
+                raise BlockchainUnavailableError(error_msg)
+            self.logger.error(error_msg)
+    
+    def _is_blockchain_ready(self) -> bool:
+        """Check if blockchain service is ready for operations"""
+        return (
+            self.web3 is not None and
+            self.web3.is_connected() and
+            self.contract is not None and
+            self.account is not None
+        )
     
     def _load_contract_abi(self) -> Optional[list]:
         """
@@ -171,22 +237,34 @@ class BlockchainCarbonService:
     def create_carbon_record(self, production_id: int, carbon_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Create an immutable carbon record on the blockchain.
-        Returns transaction details or mock data if blockchain unavailable.
+        Fails in production if blockchain is unavailable.
         """
         try:
             # Generate record hash
             record_hash = self.hash_carbon_data(carbon_data)
             
-            # If blockchain is available and not in mock mode, create actual transaction
-            if not self.mock_mode and self.web3 and self.contract and self.account:
+            # Ensure blockchain is available for production environments
+            if self.blockchain_required and not self._is_blockchain_ready():
+                raise BlockchainUnavailableError(
+                    "Blockchain verification is required but blockchain service is unavailable. "
+                    "Cannot proceed with carbon record creation."
+                )
+            
+            # Create blockchain transaction if available
+            if self._is_blockchain_ready():
                 return self._create_blockchain_transaction(production_id, carbon_data, record_hash)
             else:
-                # Fallback: Return mock blockchain data for development
-                return self._create_mock_blockchain_record(production_id, carbon_data, record_hash)
+                # Development fallback with clear warning
+                self.logger.warning(f"Creating mock carbon record for development - production_id: {production_id}")
+                return self._create_development_mock_record(production_id, carbon_data, record_hash)
                 
         except Exception as e:
-            print(f"Error creating carbon record: {e}")
-            return self._create_mock_blockchain_record(production_id, carbon_data, self.hash_carbon_data(carbon_data))
+            self.logger.error(f"Error creating carbon record: {e}")
+            if self.blockchain_required:
+                raise BlockchainOperationError(f"Failed to create carbon record: {str(e)}")
+            else:
+                # Only allow fallback in development
+                return self._create_development_mock_record(production_id, carbon_data, self.hash_carbon_data(carbon_data))
 
     def _create_blockchain_transaction(self, production_id: int, carbon_data: Dict[str, Any], record_hash: str) -> Dict[str, Any]:
         """Create actual blockchain transaction on Polygon Amoy"""
@@ -240,7 +318,9 @@ class BlockchainCarbonService:
             })
             
             # Sign and send transaction
-            signed_txn = self.web3.eth.account.signTransaction(transaction, self.account.privateKey)
+            # Get private key securely for transaction signing
+            blockchain_private_key = get_secure_blockchain_key()
+            signed_txn = self.web3.eth.account.signTransaction(transaction, blockchain_private_key)
             tx_hash = self.web3.eth.sendRawTransaction(signed_txn.rawTransaction)
             
             # Wait for transaction receipt
@@ -258,11 +338,15 @@ class BlockchainCarbonService:
             }
             
         except Exception as e:
-            print(f"Blockchain transaction failed: {e}")
-            return self._create_mock_blockchain_record(production_id, carbon_data, record_hash)
+            self.logger.error(f"Blockchain transaction failed: {e}")
+            raise BlockchainOperationError(f"Blockchain transaction failed: {e}")
 
-    def _create_mock_blockchain_record(self, production_id: int, carbon_data: Dict[str, Any], record_hash: str) -> Dict[str, Any]:
-        """Create mock blockchain record for development/testing"""
+    def _create_development_mock_record(self, production_id: int, carbon_data: Dict[str, Any], record_hash: str) -> Dict[str, Any]:
+        """Create mock blockchain record for development ONLY with clear warnings"""
+        if self.production_mode:
+            raise BlockchainUnavailableError("Mock records are not allowed in production environment")
+            
+        self.logger.warning(f"DEVELOPMENT ONLY: Creating mock blockchain record for production_id: {production_id}")
         mock_tx_hash = hashlib.sha256(f"{production_id}_{record_hash}_{int(time.time())}".encode()).hexdigest()
         
         return {
@@ -271,18 +355,20 @@ class BlockchainCarbonService:
             'block_number': 12345 + production_id,  # Mock block number
             'gas_used': 150000,
             'verification_url': f'{self.explorer_url}/tx/0x{mock_tx_hash}',
-            'blockchain_verified': True,
-            'network': f'{self.network_name}_mock',
+            'blockchain_verified': False,  # CRITICAL: Mark as NOT verified for mock data
+            'network': f'{self.network_name}_development_mock',
             'contract_address': '0x' + '0' * 40,  # Mock contract address
-            'mock_data': True  # Flag to indicate this is mock data
+            'mock_data': True,  # Flag to indicate this is mock data
+            'warning': 'DEVELOPMENT MOCK - NOT BLOCKCHAIN VERIFIED'
         }
 
     def verify_carbon_record(self, production_id: int) -> Dict[str, Any]:
         """
         Verify carbon record integrity against blockchain.
+        Returns accurate verification status without mock fallbacks.
         """
         try:
-            if not self.mock_mode and self.web3 and self.contract:
+            if self._is_blockchain_ready():
                 # Query blockchain for record using our contract structure
                 record = self.contract.functions.getCarbonRecord(production_id).call()
                 return {
@@ -297,27 +383,23 @@ class BlockchainCarbonService:
                     'credits_amount': record.creditsAmount / 1000,   # Convert grams back to kg
                     'timestamp': record.timestamp,
                     'blockchain_verified': True,
-                    'network': 'polygon_amoy'
+                    'network': self.network_name
                 }
             else:
-                # Mock verification for development
+                # No mock verification - return unavailable status
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError("Blockchain verification required but service unavailable")
+                
+                self.logger.warning(f"Blockchain verification unavailable for production_id: {production_id}")
                 return {
-                    'verified': True,
-                    'record_hash': 'mock_hash',
-                    'total_emissions': 0,
-                    'total_offsets': 0,
-                    'net_footprint': 0,
-                    'crop_type': 'mock',
-                    'usda_compliant': True,
-                    'credits_issued': False,
-                    'credits_amount': 0,
-                    'timestamp': int(time.time()),
-                    'blockchain_verified': True,
-                    'mock_data': True
+                    'verified': False,
+                    'blockchain_verified': False,
+                    'error': 'Blockchain verification service unavailable',
+                    'development_mode': not self.production_mode
                 }
                 
         except Exception as e:
-            print(f"Error verifying carbon record: {e}")
+            self.logger.error(f"Error verifying carbon record: {e}")
             return {
                 'verified': False,
                 'error': str(e),
@@ -327,9 +409,10 @@ class BlockchainCarbonService:
     def check_compliance(self, production_id: int) -> Dict[str, Any]:
         """
         Check USDA compliance and carbon credit eligibility.
+        Only returns valid results from blockchain verification.
         """
         try:
-            if not self.mock_mode and self.web3 and self.contract:
+            if self._is_blockchain_ready():
                 compliant = self.contract.functions.verifyCompliance(production_id).call()
                 return {
                     'compliant': compliant,
@@ -337,28 +420,34 @@ class BlockchainCarbonService:
                     'blockchain_verified': True
                 }
             else:
-                # Mock compliance check
+                # No mock compliance - actual verification required
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError("Compliance verification requires blockchain connection")
+                    
+                self.logger.warning(f"Compliance check unavailable for production_id: {production_id}")
                 return {
-                    'compliant': True,
-                    'eligible_for_credits': True,
-                    'blockchain_verified': True,
-                    'mock_data': True
+                    'compliant': False,
+                    'eligible_for_credits': False,
+                    'blockchain_verified': False,
+                    'error': 'Blockchain compliance verification unavailable'
                 }
                 
         except Exception as e:
-            print(f"Error checking compliance: {e}")
+            self.logger.error(f"Error checking compliance: {e}")
             return {
                 'compliant': False,
                 'eligible_for_credits': False,
-                'error': str(e)
+                'error': str(e),
+                'blockchain_verified': False
             }
 
     def issue_carbon_credits(self, production_id: int, credits: float) -> Dict[str, Any]:
         """
         Issue carbon credits for verified sustainable practices.
+        Only issues real credits after blockchain verification.
         """
         try:
-            if not self.mock_mode and self.web3 and self.contract and self.account:
+            if self._is_blockchain_ready():
                 # Convert credits to wei
                 credits_wei = int(credits * 1000)
                 
@@ -371,7 +460,9 @@ class BlockchainCarbonService:
                     'nonce': self.web3.eth.getTransactionCount(self.account.address)
                 })
                 
-                signed_txn = self.web3.eth.account.signTransaction(transaction, self.account.privateKey)
+                # Get private key securely for transaction signing
+                blockchain_private_key = get_secure_blockchain_key()
+                signed_txn = self.web3.eth.account.signTransaction(transaction, blockchain_private_key)
                 tx_hash = self.web3.eth.sendRawTransaction(signed_txn.rawTransaction)
                 receipt = self.web3.eth.waitForTransactionReceipt(tx_hash, timeout=120)
                 
@@ -379,22 +470,23 @@ class BlockchainCarbonService:
                     'success': True,
                     'credits_issued': credits,
                     'transaction_hash': tx_hash.hex(),
-                    'verification_url': f'https://etherscan.io/tx/{tx_hash.hex()}',
+                    'verification_url': f'{self.explorer_url}/tx/{tx_hash.hex()}',
                     'blockchain_verified': True
                 }
             else:
-                # Mock credit issuance
+                # No mock credit issuance in production-ready system
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError("Credit issuance requires blockchain connection")
+                
+                self.logger.error(f"Cannot issue credits: blockchain unavailable for production_id: {production_id}")
                 return {
-                    'success': True,
-                    'credits_issued': credits,
-                    'transaction_hash': f'0x{hashlib.sha256(f"credits_{production_id}_{credits}".encode()).hexdigest()}',
-                    'verification_url': f'https://etherscan.io/tx/mock',
-                    'blockchain_verified': True,
-                    'mock_data': True
+                    'success': False,
+                    'error': 'Blockchain service unavailable for credit issuance',
+                    'blockchain_verified': False
                 }
                 
         except Exception as e:
-            print(f"Error issuing carbon credits: {e}")
+            self.logger.error(f"Error issuing carbon credits: {e}")
             return {
                 'success': False,
                 'error': str(e),
@@ -406,12 +498,14 @@ class BlockchainCarbonService:
         Submit monthly carbon summary to blockchain
         """
         try:
-            if not self.blockchain_enabled:
-                logger.info("Blockchain not enabled, using mock mode for monthly summary")
+            if not self._is_blockchain_ready():
+                if self.blockchain_required:
+                    raise BlockchainUnavailableError("Monthly summary submission requires blockchain connection")
+                self.logger.info("Blockchain not enabled, using mock mode for monthly summary")
                 return self._generate_mock_monthly_summary(producer_id, production_id, total_co2e, data_hash)
 
             if not self.contract:
-                logger.error("Smart contract not initialized")
+                self.logger.error("Smart contract not initialized")
                 return None
 
             # Convert CO2e from kg to grams for contract
@@ -420,7 +514,7 @@ class BlockchainCarbonService:
             # Convert data hash to bytes32
             hash_bytes = bytes.fromhex(data_hash)
             
-            logger.info(f"Submitting monthly summary: producer={producer_id}, production={production_id}, co2e={total_co2e_grams}g")
+            self.logger.info(f"Submitting monthly summary: producer={producer_id}, production={production_id}, co2e={total_co2e_grams}g")
 
             # Call smart contract function
             transaction = self._create_blockchain_transaction(
@@ -450,11 +544,16 @@ class BlockchainCarbonService:
                 return None
 
         except Exception as e:
-            logger.error(f"Error submitting monthly summary: {str(e)}")
+            self.logger.error(f"Error submitting monthly summary: {str(e)}")
+            if self.blockchain_required:
+                raise BlockchainOperationError(f"Failed to submit monthly summary: {str(e)}")
             return None
 
     def _generate_mock_monthly_summary(self, producer_id, production_id, total_co2e, data_hash):
         """Generate mock monthly summary for development"""
+        import random
+        if self.production_mode:
+            raise BlockchainUnavailableError("Mock monthly summary not allowed in production")
         mock_hash = f"0x{''.join(random.choices('0123456789abcdef', k=64))}"
         
         return {
@@ -481,14 +580,14 @@ class BlockchainCarbonService:
             # 2. Store in a secure database with transaction_hash as key
             # 3. Use renewable-powered servers
             
-            logger.info(f"Storing encrypted data for transaction {transaction_hash}")
+            self.logger.info(f"Storing encrypted data for transaction {transaction_hash}")
             
             # For now, we'll just log that data would be stored
             data_size = len(str(raw_data))
-            logger.info(f"Would store {data_size} bytes of encrypted data for tx {transaction_hash}")
+            self.logger.info(f"Would store {data_size} bytes of encrypted data for tx {transaction_hash}")
             
         except Exception as e:
-            logger.error(f"Error storing encrypted data: {str(e)}")
+            self.logger.error(f"Error storing encrypted data: {str(e)}")
 
     def get_carbon_summary_with_blockchain(self, production_id: int) -> Dict[str, Any]:
         """
@@ -521,7 +620,7 @@ class BlockchainCarbonService:
             return blockchain_data
             
         except Exception as e:
-            print(f"Error getting blockchain carbon summary: {e}")
+            self.logger.error(f"Error getting blockchain carbon summary: {e}")
             return {
                 'error': str(e),
                 'blockchain_verification': {

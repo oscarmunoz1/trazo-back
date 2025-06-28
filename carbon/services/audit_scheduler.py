@@ -60,7 +60,7 @@ class AuditScheduler:
             recent_offsets = CarbonEntry.objects.filter(
                 type='offset',
                 created_at__gte=last_month,
-                verification_level__in=['self_reported', 'community_verified']
+                verification_level='self_reported'
             ).exclude(audit_status='passed')
 
             if not recent_offsets.exists():

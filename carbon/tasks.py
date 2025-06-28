@@ -21,6 +21,9 @@ from .services.john_deere_api import get_john_deere_api
 from company.models import Establishment, Company
 from product.models import Product
 from .services.blockchain import BlockchainService
+from .services.real_usda_integration import RealUSDAAPIClient
+from .services.usda_cache_service import specialized_cache, CacheStrategy
+from .services.api_circuit_breaker import usda_circuit_breakers
 import hashlib
 import json
 
@@ -915,7 +918,7 @@ def process_pending_verifications():
         verification_service = VerificationService()
         pending_entries = CarbonEntry.objects.filter(
             type='offset',
-            verification_level__in=['self_reported', 'community_verified'],
+            verification_level='self_reported',
             audit_status='pending'
         )
 
@@ -979,7 +982,6 @@ def update_trust_scores():
         
         trust_scores = {
             'self_reported': 0.5,
-            'community_verified': 0.75,
             'certified_project': 1.0
         }
         
@@ -1056,4 +1058,192 @@ def validate_registry_verifications():
         
     except Exception as e:
         logger.error(f"Error in validate_registry_verifications: {e}")
-        return f"Error validating registries: {str(e)}" 
+        return f"Error validating registries: {str(e)}"
+
+
+# USDA API Cache Management Tasks
+
+@shared_task
+def refresh_usda_cache_data(crop_type: str, state: str, year: int = None, data_type: str = 'yield'):
+    """
+    Background task to refresh stale USDA cache data
+    
+    Args:
+        crop_type: Type of crop (e.g., 'corn', 'soybeans')
+        state: State abbreviation (e.g., 'IA', 'IL')
+        year: Optional year for data
+        data_type: Type of data to refresh ('yield', 'benchmark', 'carbon_calculation')
+    """
+    try:
+        logger.info(f"Starting background refresh for {crop_type} {state} {data_type}")
+        
+        usda_client = RealUSDAAPIClient()
+        
+        if data_type == 'yield':
+            # Refresh NASS yield data
+            data = usda_client.get_nass_crop_data(crop_type, state, year)
+            if data:
+                cache_identifier = f"{crop_type.lower()}_{state.upper()}_{year or 'current'}"
+                specialized_cache.cache_manager.set_cached_data(
+                    'nass_yield',
+                    cache_identifier,
+                    data,
+                    CacheStrategy.STATIC_DATA,
+                    params={'year': year} if year else None
+                )
+                logger.info(f"Refreshed NASS yield data for {crop_type} {state}")
+                return {'success': True, 'data_type': 'nass_yield', 'records': len(data.get('data', []))}
+        
+        elif data_type == 'benchmark':
+            # Refresh benchmark data
+            benchmark = usda_client.get_benchmark_yield(crop_type, state)
+            if benchmark:
+                specialized_cache.cache_benchmark_data(crop_type, state, benchmark)
+                logger.info(f"Refreshed benchmark data for {crop_type} {state}: {benchmark}")
+                return {'success': True, 'data_type': 'benchmark', 'value': benchmark}
+        
+        elif data_type == 'carbon_calculation':
+            # This would require farm_practices data, so we skip individual calculation refresh
+            logger.info(f"Carbon calculation refresh skipped - requires specific farm practices")
+            return {'success': True, 'data_type': 'carbon_calculation', 'action': 'skipped'}
+        
+        return {'success': False, 'error': f'Unknown data type: {data_type}'}
+        
+    except Exception as e:
+        logger.error(f"Failed to refresh USDA cache data: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task
+def preload_common_usda_data():
+    """
+    Scheduled task to preload commonly accessed USDA data
+    Should run daily during low-traffic hours
+    """
+    try:
+        logger.info("Starting USDA data preloading task")
+        
+        # Preload common datasets
+        results = specialized_cache.cache_manager.preload_common_data()
+        
+        successful_loads = sum(1 for success in results.values() if success)
+        total_loads = len(results)
+        
+        logger.info(f"USDA preloading completed: {successful_loads}/{total_loads} successful")
+        
+        return {
+            'success': True,
+            'preloaded_datasets': successful_loads,
+            'total_attempts': total_loads,
+            'details': results
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to preload USDA data: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task
+def cleanup_expired_usda_cache():
+    """
+    Cleanup expired USDA cache entries
+    Should run daily to maintain cache efficiency
+    """
+    try:
+        logger.info("Starting USDA cache cleanup task")
+        
+        # Cleanup expired entries
+        cleaned_count = specialized_cache.cache_manager.cleanup_expired_cache()
+        
+        # Get current cache statistics
+        stats = specialized_cache.cache_manager.get_cache_stats()
+        
+        logger.info(f"USDA cache cleanup completed: {cleaned_count} entries cleaned")
+        
+        return {
+            'success': True,
+            'cleaned_entries': cleaned_count,
+            'cache_stats': stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to cleanup USDA cache: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task
+def monitor_api_health():
+    """
+    Monitor health of all USDA APIs and circuit breakers
+    Should run every 5 minutes
+    """
+    try:
+        logger.info("Starting API health monitoring")
+        
+        # Get circuit breaker health status
+        health_status = usda_circuit_breakers.health_check()
+        
+        # Log any unhealthy APIs
+        if health_status['unhealthy_apis']:
+            logger.warning(f"Unhealthy APIs detected: {health_status['unhealthy_apis']}")
+        
+        if health_status['degraded_apis']:
+            logger.warning(f"Degraded APIs detected: {health_status['degraded_apis']}")
+        
+        # Get detailed statistics
+        detailed_stats = usda_circuit_breakers.get_all_stats()
+        
+        # Check for APIs with high failure rates
+        for api_name, stats in detailed_stats.items():
+            if stats['recent_failure_rate'] > 50:
+                logger.error(f"High failure rate for {api_name}: {stats['recent_failure_rate']:.1f}%")
+            elif stats['recent_failure_rate'] > 25:
+                logger.warning(f"Elevated failure rate for {api_name}: {stats['recent_failure_rate']:.1f}%")
+        
+        return {
+            'success': True,
+            'overall_status': health_status['overall_status'],
+            'healthy_apis': len(health_status['healthy_apis']),
+            'degraded_apis': len(health_status['degraded_apis']),
+            'unhealthy_apis': len(health_status['unhealthy_apis']),
+            'total_success_rate': health_status['total_success_rate'],
+            'detailed_stats': detailed_stats
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to monitor API health: {e}")
+        return {'success': False, 'error': str(e)}
+
+
+@shared_task
+def reset_circuit_breakers_if_needed():
+    """
+    Reset circuit breakers that have been open for too long
+    Should run every hour
+    """
+    try:
+        logger.info("Checking circuit breakers for potential reset")
+        
+        stats = usda_circuit_breakers.get_all_stats()
+        reset_apis = []
+        
+        for api_name, api_stats in stats.items():
+            # Reset if circuit has been open for more than 30 minutes
+            if (api_stats['state'] == 'open' and 
+                api_stats['last_failure_time'] and
+                api_stats['last_failure_time'] < (timezone.now() - timedelta(minutes=30)).isoformat()):
+                
+                breaker = usda_circuit_breakers.get_breaker(api_name)
+                breaker.reset()
+                reset_apis.append(api_name)
+                logger.info(f"Reset circuit breaker for {api_name} after extended downtime")
+        
+        return {
+            'success': True,
+            'reset_apis': reset_apis,
+            'total_resets': len(reset_apis)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to reset circuit breakers: {e}")
+        return {'success': False, 'error': str(e)} 

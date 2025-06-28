@@ -11,12 +11,15 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from ..models import CarbonOffsetPurchase, CarbonOffsetProject
+from .verification import verification_service
 
 class CertificateGenerator:
-    """Service for generating carbon offset certificates."""
+    """Service for generating carbon offset certificates with blockchain verification."""
 
     def __init__(self):
         self.styles = getSampleStyleSheet()
+        self.production_mode = getattr(settings, 'DEBUG', True) == False
+        self.require_blockchain_verification = self.production_mode or getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
         self._setup_fonts()
 
     def _setup_fonts(self):
@@ -28,13 +31,39 @@ class CertificateGenerator:
     def generate_certificate(self, purchase: CarbonOffsetPurchase) -> str:
         """
         Generate a PDF certificate for a carbon offset purchase.
+        REQUIRES BLOCKCHAIN VERIFICATION in production.
         
         Args:
             purchase: CarbonOffsetPurchase instance
             
         Returns:
             str: Path to the generated certificate file
+            
+        Raises:
+            ValueError: If blockchain verification is required but not available
         """
+        # CRITICAL: Verify blockchain verification before generating certificate
+        if self.require_blockchain_verification:
+            verification_result = verification_service.verify_purchase(purchase)
+            
+            # Check if blockchain verification passed
+            blockchain_check = verification_result.get('checks', {}).get('blockchain', {})
+            if not blockchain_check.get('passed', False):
+                error_msg = (
+                    f"Certificate generation failed: Blockchain verification required but not passed. "
+                    f"Details: {blockchain_check.get('details', 'Unknown error')}"
+                )
+                raise ValueError(error_msg)
+            
+            # Log successful verification for audit trail
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Certificate generated for purchase {purchase.id} with blockchain verification")
+        else:
+            # Development mode warning
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Certificate generated for purchase {purchase.id} WITHOUT blockchain verification (development mode)")
         # Generate unique filename
         filename = f"certificates/{uuid.uuid4()}.pdf"
         filepath = os.path.join(settings.MEDIA_ROOT, filename)
@@ -70,6 +99,9 @@ class CertificateGenerator:
         story.append(Paragraph("Carbon Offset Certificate", title_style))
         story.append(Spacer(1, 0.25*inch))
 
+        # Add blockchain verification status to certificate
+        blockchain_status = "BLOCKCHAIN VERIFIED" if self.require_blockchain_verification else "DEVELOPMENT MODE"
+        
         # Add certificate details
         details = [
             ["Certificate ID:", purchase.certificate_id],
@@ -79,7 +111,8 @@ class CertificateGenerator:
             ["Certification Standard:", purchase.project.certification_standard],
             ["Amount Offset:", f"{purchase.amount} tons CO₂e"],
             ["Location:", f"{purchase.project.location}"],
-            ["Verification Status:", purchase.verification_status]
+            ["Verification Status:", purchase.verification_status],
+            ["Blockchain Status:", blockchain_status]
         ]
 
         # Create table with details
@@ -105,12 +138,18 @@ class CertificateGenerator:
             fontSize=10,
             textColor=colors.grey
         )
-        story.append(Paragraph(
+        verification_text = (
             "This certificate has been verified and is registered in the Trazo Carbon Registry. "
             "The carbon offsets represented by this certificate have been retired and cannot be "
-            "used for any other purpose.",
-            verification_style
-        ))
+            "used for any other purpose."
+        )
+        
+        if self.require_blockchain_verification:
+            verification_text += " This certificate has been verified using blockchain technology for enhanced security and immutability."
+        else:
+            verification_text += " WARNING: This certificate was generated in development mode without blockchain verification."
+            
+        story.append(Paragraph(verification_text, verification_style))
 
         # Build PDF
         doc.build(story)

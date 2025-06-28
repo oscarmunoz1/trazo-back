@@ -26,6 +26,19 @@ class User(AbstractUser):
         choices=USER_TYPE_CHOICES, default=CONSUMER
     )
     image = models.ImageField(upload_to="user_images/", blank=True, null=True)
+    
+    # Social authentication fields
+    social_auth_provider = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True,
+        choices=[
+            ('google', 'Google'),
+            ('facebook', 'Facebook'),
+            ('apple', 'Apple'),
+        ]
+    )
+    social_auth_id = models.CharField(max_length=255, blank=True, null=True)
 
     REQUIRED_FIELDS = []
     USERNAME_FIELD = "email"

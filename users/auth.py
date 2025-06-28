@@ -30,5 +30,12 @@ class CustomAuthentication(JWTAuthentication):
             return None
 
         validated_token = self.get_validated_token(raw_token)
-        # enforce_csrf(request)
+        
+        # Skip CSRF check for logout endpoint
+        if request.path == '/auth/logout/':
+            # Logout is inherently safe and should not require CSRF
+            pass
+        else:
+            enforce_csrf(request)
+            
         return self.get_user(validated_token), validated_token

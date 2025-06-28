@@ -654,53 +654,59 @@ def stripe_webhook(request):
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
 
-    print(f"Received webhook payload: {payload}")
-    print(f"Received webhook signature header: {sig_header}")
+    logger.info(f"Received webhook event")
     
     try:
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
         )
     except ValueError as e:
-        # Invalid payload
+        logger.error(f"Invalid webhook payload: {str(e)}")
         return HttpResponse(status=400)
     except stripe.error.SignatureVerificationError as e:
-        # Invalid signature
+        logger.error(f"Invalid webhook signature: {str(e)}")
         return HttpResponse(status=400)
     
-    # Handle the event
+    # Handle the event in a transaction
     event_type = event['type']
     data = event['data']['object']
     
-    print(f"Received webhook event: {event_type}")
+    logger.info(f"Processing webhook event: {event_type}")
     
-    if event_type == 'checkout.session.completed':
-        # Check if this is a payment method setup session
-        if data.get('mode') == 'setup' and data.get('metadata', {}).get('setup_type') == 'payment_method':
-            # Payment method setup will be handled via the setup_intent.succeeded event
-            print("Checkout session completed for payment method setup")
-        # Check if this is an add-on purchase
-        elif data.get('metadata', {}).get('is_addon_purchase') == 'true':
-            handle_addon_purchase_completed(data)
-        elif data.get('mode') == 'payment' and data.get('metadata', {}).get('addon_id'):
-            handle_addon_purchase_completed(data)
-        else:
-            handle_checkout_session_completed(data)
-    elif event_type == 'setup_intent.succeeded':
-        # Handle successful setup of payment method
-        handle_setup_intent_succeeded(data)
-    elif event_type == 'invoice.payment_succeeded':
-        handle_invoice_payment_succeeded(data)
-    elif event_type == 'invoice.payment_failed':
-        handle_invoice_payment_failed(data)
-    elif event_type == 'customer.subscription.updated':
-        handle_subscription_updated(data)
-    elif event_type == 'customer.subscription.deleted':
-        handle_customer_subscription_deleted(data)
-    elif event_type == 'payment_method.attached':
-        handle_payment_method_attached(data)
+    try:
+        with transaction.atomic():
+            if event_type == 'checkout.session.completed':
+                # Check if this is a payment method setup session
+                if data.get('mode') == 'setup' and data.get('metadata', {}).get('setup_type') == 'payment_method':
+                    logger.info("Checkout session completed for payment method setup")
+                # Check if this is an add-on purchase
+                elif data.get('metadata', {}).get('is_addon_purchase') == 'true':
+                    handle_addon_purchase_completed(data)
+                elif data.get('mode') == 'payment' and data.get('metadata', {}).get('addon_id'):
+                    handle_addon_purchase_completed(data)
+                else:
+                    handle_checkout_session_completed(data)
+            elif event_type == 'setup_intent.succeeded':
+                handle_setup_intent_succeeded(data)
+            elif event_type == 'invoice.payment_succeeded':
+                handle_invoice_payment_succeeded(data)
+            elif event_type == 'invoice.payment_failed':
+                handle_invoice_payment_failed(data)
+            elif event_type == 'customer.subscription.updated':
+                handle_subscription_updated(data)
+            elif event_type == 'customer.subscription.deleted':
+                handle_customer_subscription_deleted(data)
+            elif event_type == 'payment_method.attached':
+                handle_payment_method_attached(data)
+            else:
+                logger.warning(f"Unhandled webhook event type: {event_type}")
+        
+        logger.info(f"Successfully processed webhook event: {event_type}")
+        return HttpResponse(status=200)
     
-    return HttpResponse(status=200)
+    except Exception as e:
+        logger.error(f"Error processing webhook event {event_type}: {str(e)}", exc_info=True)
+        return HttpResponse(status=500)
 
 def handle_checkout_session_completed(session):
     """Process completed checkout session"""

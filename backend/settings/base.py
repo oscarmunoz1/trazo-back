@@ -71,11 +71,15 @@ INSTALLED_APPS = [
     # Celery and Redis
     "django_celery_beat",
     "django_redis",
+    # Security
+    "django_ratelimit",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
+    "backend.security_middleware.SecurityLoggingMiddleware",
+    "backend.security_middleware.CSRFSecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -91,9 +95,27 @@ ROOT_URLCONF = "backend.urls"
 
 AUTH_USER_MODEL = "users.User"
 
+# Rate Limiting Configuration
+RATELIMIT_ENABLE = True
+RATELIMIT_USE_CACHE = 'default'
+RATELIMIT_VIEW = 'django_ratelimit.exceptions.Ratelimited'
+
+# Security settings for rate limiting
+DJANGO_RATELIMIT_RATELIMITED_RESPONSE = 'Too many requests'
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ("users.auth.CustomAuthentication",),
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle"
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "100/hour",
+        "user": "1000/hour",
+        "login": "5/minute",
+        "carbon_calculation": "200/hour",
+        "api_sensitive": "50/hour"
+    },
 }
 
 TEMPLATES = [
@@ -291,6 +313,14 @@ LOGGING = {
         "null": {
             "class": "logging.NullHandler",
         },
+        "security_file": {
+            "level": "WARNING",
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": os.path.join(BASE_DIR, "logs", "security.log"),
+            "maxBytes": 1024*1024*10,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
     },
     # Se redefinen dos loggers para satisfacer los requisitos
     "loggers": {
@@ -307,6 +337,11 @@ LOGGING = {
         "django.db.backends": {
             "handlers": ["console"],
             "level": "ERROR",
+            "propagate": False,
+        },
+        "security": {
+            "handlers": ["console", "security_file"],
+            "level": "WARNING",
             "propagate": False,
         },
         "django.security.DisallowedHost": {
@@ -487,3 +522,16 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=2, minute=0, day_of_month=1),  # 2:00 AM UTC on 1st of each month
     },
 }
+
+
+# Social Authentication Settings
+GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID", default="")
+GOOGLE_CLIENT_SECRET = config("GOOGLE_CLIENT_SECRET", default="")
+
+FACEBOOK_APP_ID = config("FACEBOOK_APP_ID", default="")
+FACEBOOK_APP_SECRET = config("FACEBOOK_APP_SECRET", default="")
+
+APPLE_CLIENT_ID = config("APPLE_CLIENT_ID", default="")
+APPLE_TEAM_ID = config("APPLE_TEAM_ID", default="")
+APPLE_KEY_ID = config("APPLE_KEY_ID", default="")
+APPLE_PRIVATE_KEY = config("APPLE_PRIVATE_KEY", default="")

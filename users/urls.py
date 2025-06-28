@@ -6,6 +6,7 @@ from .views import (
     CustomTokenRefreshView,
     APILogoutView,
 )
+from .social_auth import SocialAuthView
 from rest_framework_simplejwt.views import TokenRefreshView
 from django.urls import path
 
@@ -23,4 +24,5 @@ urlpatterns = [
     *routes.urls,
     path("auth/refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
     path("auth/logout/", APILogoutView.as_view(), name="logout"),
+    path("auth/social/", SocialAuthView.as_view(), name="social_auth"),
 ]

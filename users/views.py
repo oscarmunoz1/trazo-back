@@ -13,6 +13,8 @@ from rest_framework.decorators import (
     permission_classes as permission_classes_decorator,
     api_view,
 )
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from django.shortcuts import get_object_or_404
 from users.models import WorksIn, User
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -265,6 +267,7 @@ class CustomTokenRefreshView(TokenRefreshView):
         return response
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 class APILogoutView(APIView):
     permission_classes = (IsAuthenticated,)
     http_method_names = ["post"]

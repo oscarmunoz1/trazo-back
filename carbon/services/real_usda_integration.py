@@ -7,14 +7,68 @@ using available government data sources.
 import logging
 import requests
 import json
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 from datetime import datetime, timedelta
 import hashlib
+import time
+import threading
+from .secure_key_management import secure_key_manager, get_secure_usda_keys
+from .usda_cache_service import (
+    USDADataCacheManager, 
+    USDASpecializedCache, 
+    CacheStrategy,
+    usda_cache,
+    specialized_cache
+)
+from .api_circuit_breaker import (
+    usda_circuit_breakers,
+    with_circuit_breaker,
+    safe_api_call,
+    CircuitBreakerOpenError
+)
+from .enhanced_error_handling import (
+    error_handler,
+    with_error_handling,
+    RetryConfig,
+    FallbackConfig,
+    FallbackStrategy,
+    USDAAPIErrorHandler
+)
 
 logger = logging.getLogger(__name__)
+
+
+class APIRateLimiter:
+    """Rate limiter for API calls to prevent hitting USDA API limits"""
+    
+    def __init__(self, calls_per_minute=10):
+        self.calls_per_minute = calls_per_minute
+        self.calls = []
+        self.lock = threading.Lock()
+    
+    def wait_if_needed(self):
+        """Wait if necessary to respect rate limits"""
+        with self.lock:
+            now = time.time()
+            # Remove calls older than 1 minute
+            self.calls = [call_time for call_time in self.calls if now - call_time < 60]
+            
+            if len(self.calls) >= self.calls_per_minute:
+                # Calculate wait time
+                oldest_call = min(self.calls)
+                wait_time = 60 - (now - oldest_call) + 1  # Add 1 second buffer
+                if wait_time > 0:
+                    logger.info(f"Rate limit reached, waiting {wait_time:.2f} seconds")
+                    time.sleep(wait_time)
+                    # Clean up old calls again after waiting
+                    now = time.time()
+                    self.calls = [call_time for call_time in self.calls if now - call_time < 60]
+            
+            # Record this call
+            self.calls.append(now)
 
 
 class RealUSDAAPIClient:
@@ -26,12 +80,33 @@ class RealUSDAAPIClient:
         self.ers_base_url = 'https://api.ers.usda.gov'
         self.fooddata_base_url = 'https://api.nal.usda.gov/fdc/v1'
         
-        # API Keys (you'll need to register for these)
-        self.nass_api_key = getattr(settings, 'USDA_NASS_API_KEY', None)
-        self.ers_api_key = getattr(settings, 'USDA_ERS_API_KEY', None)
-        self.fooddata_api_key = getattr(settings, 'USDA_FOODDATA_API_KEY', None)
+        # API Keys loaded securely
+        try:
+            api_keys = get_secure_usda_keys()
+            self.nass_api_key = api_keys.get('nass_api_key')
+            self.ers_api_key = api_keys.get('ers_api_key')
+            self.fooddata_api_key = api_keys.get('fooddata_api_key')
+            
+            if not any([self.nass_api_key, self.ers_api_key, self.fooddata_api_key]):
+                logger.warning("No USDA API keys found in secure storage")
+            else:
+                logger.info("✅ USDA API keys loaded securely")
+                
+        except Exception as e:
+            logger.error(f"Failed to load USDA API keys securely: {e}")
+            # Fallback to settings for development only
+            if not getattr(settings, 'DEBUG', True):
+                raise Exception(f"USDA API key loading failed in production: {e}")
+            
+            self.nass_api_key = getattr(settings, 'USDA_NASS_API_KEY', None)
+            self.ers_api_key = getattr(settings, 'USDA_ERS_API_KEY', None)
+            self.fooddata_api_key = getattr(settings, 'USDA_FOODDATA_API_KEY', None)
         
         self.timeout = 30
+        
+        # Rate limiters for different APIs
+        self.nass_rate_limiter = APIRateLimiter(calls_per_minute=10)  # Conservative limit
+        self.fooddata_rate_limiter = APIRateLimiter(calls_per_minute=30)  # Higher limit for FoodData Central
         
         # Base emission factors from IPCC/EPA guidelines
         self.base_emission_factors = {
@@ -47,7 +122,7 @@ class RealUSDAAPIClient:
         self.regional_yield_benchmarks = {}
     
     def get_nass_crop_data(self, crop_type: str, state: str, year: int = None) -> Dict[str, Any]:
-        """Fetch real crop data from USDA NASS QuickStats API with caching"""
+        """Fetch real crop data from USDA NASS QuickStats API with comprehensive caching"""
         try:
             if not self.nass_api_key:
                 logger.warning("NASS API key not configured")
@@ -57,12 +132,22 @@ class RealUSDAAPIClient:
             if not year:
                 year = datetime.now().year - 1  # Previous year data is usually available
             
-            # Add caching to prevent repeated API calls
-            cache_key = f'nass_data_{crop_type}_{state}_{year}_v3'
-            cached_data = cache.get(cache_key)
+            # Check specialized cache first
+            cache_identifier = f"{crop_type.lower()}_{state.upper()}_{year}"
+            cached_data, is_fresh = specialized_cache.cache_manager.get_cached_data(
+                'nass_yield',
+                cache_identifier,
+                CacheStrategy.STATIC_DATA,
+                params={'year': year}
+            )
             
-            if cached_data:
-                logger.info(f"✅ Using cached NASS data for {crop_type} in {state}")
+            if cached_data and is_fresh:
+                logger.info(f"✅ Using fresh cached NASS data for {crop_type} in {state} ({year})")
+                return cached_data
+            elif cached_data:
+                logger.info(f"⚠️ Using stale cached NASS data for {crop_type} in {state} ({year})")
+                # Return stale data but trigger background refresh
+                self._schedule_background_refresh(crop_type, state, year)
                 return cached_data
             
             # Enhanced crop type mapping for NASS commodity names
@@ -118,18 +203,38 @@ class RealUSDAAPIClient:
             
             logger.info(f"NASS API request: commodity={commodity}, state={state}, year={year}")
             
-            response = requests.get(
-                f"{self.nass_base_url}/api_GET",
-                params=params,
-                timeout=self.timeout
-            )
+            # Apply rate limiting before making the request
+            self.nass_rate_limiter.wait_if_needed()
+            
+            # Use circuit breaker for resilient API access
+            def make_nass_request():
+                return requests.get(
+                    f"{self.nass_base_url}/api_GET",
+                    params=params,
+                    timeout=self.timeout
+                )
+            
+            try:
+                response = safe_api_call('nass', make_nass_request)
+            except CircuitBreakerOpenError:
+                logger.warning("NASS API circuit breaker is open, using fallback")
+                # Return cached data or empty result
+                return usda_circuit_breakers.get_breaker('nass').fallback_func(crop_type, state, year)
             
             if response.status_code == 200:
                 data = response.json()
                 if data and 'data' in data and len(data['data']) > 0:
                     logger.info(f"Successfully fetched NASS data for {crop_type} ({commodity}) in {state}: {len(data['data'])} records")
-                    # Cache for 2 hours to prevent repeated API calls
-                    cache.set(cache_key, data, 7200)
+                    
+                    # Cache using comprehensive caching service
+                    specialized_cache.cache_manager.set_cached_data(
+                        'nass_yield',
+                        cache_identifier,
+                        data,
+                        CacheStrategy.STATIC_DATA,
+                        params={'year': year}
+                    )
+                    
                     return data
                 else:
                     logger.warning(f"NASS API returned no data for {commodity} in {state} for {year}")
@@ -144,19 +249,23 @@ class RealUSDAAPIClient:
                 
         except requests.RequestException as e:
             logger.error(f"NASS API request failed: {e}")
-            return {}
+            return USDAAPIErrorHandler.handle_api_error('get_nass_crop_data', e, crop_type, state)
         except Exception as e:
             logger.error(f"Unexpected error fetching NASS data: {e}")
-            return {}
+            return USDAAPIErrorHandler.handle_api_error('get_nass_crop_data', e, crop_type, state)
     
     def get_benchmark_yield(self, crop_type: str, state: str) -> Optional[float]:
-        """Get benchmark yield for a crop in a state from NASS data"""
+        """Get benchmark yield for a crop in a state from NASS data with enhanced caching"""
         try:
-            # Try to get cached benchmark
-            cache_key = f"nass_benchmark_{crop_type}_{state}"
-            cached_benchmark = cache.get(cache_key)
+            # Check specialized cache first
+            cached_benchmark, is_fresh = specialized_cache.get_cached_benchmark(crop_type, state)
             
-            if cached_benchmark:
+            if cached_benchmark and is_fresh:
+                logger.debug(f"Using cached benchmark for {crop_type} in {state}: {cached_benchmark}")
+                return cached_benchmark
+            elif cached_benchmark:
+                # Return stale data but trigger refresh
+                self._schedule_background_refresh(crop_type, state, None, 'benchmark')
                 return cached_benchmark
             
             # Fetch from NASS API
@@ -176,8 +285,11 @@ class RealUSDAAPIClient:
                 
                 if yields:
                     avg_yield = sum(yields) / len(yields)
-                    # Cache for 24 hours
-                    cache.set(cache_key, avg_yield, 86400)
+                    
+                    # Cache using specialized cache
+                    specialized_cache.cache_benchmark_data(crop_type, state, avg_yield)
+                    
+                    logger.info(f"Calculated and cached benchmark yield for {crop_type} in {state}: {avg_yield}")
                     return avg_yield
             
             return None
@@ -280,11 +392,22 @@ class RealUSDAAPIClient:
                 'pageSize': 5
             }
             
-            response = requests.get(
-                f"{self.fooddata_base_url}/foods/search",
-                params=search_params,
-                timeout=self.timeout
-            )
+            # Apply rate limiting before making the request
+            self.fooddata_rate_limiter.wait_if_needed()
+            
+            # Use circuit breaker for resilient API access
+            def make_fooddata_request():
+                return requests.get(
+                    f"{self.fooddata_base_url}/foods/search",
+                    params=search_params,
+                    timeout=self.timeout
+                )
+            
+            try:
+                response = safe_api_call('fooddata', make_fooddata_request)
+            except CircuitBreakerOpenError:
+                logger.warning("FoodData Central API circuit breaker is open, using fallback")
+                return usda_circuit_breakers.get_breaker('fooddata').fallback_func(crop_type)
             
             if response.status_code == 200:
                 data = response.json()
@@ -316,6 +439,9 @@ class RealUSDAAPIClient:
                 # Get detailed nutrient info
                 food_id = food_item.get('fdcId')
                 if food_id:
+                    # Apply rate limiting before making the request
+                    self.fooddata_rate_limiter.wait_if_needed()
+                    
                     detail_response = requests.get(
                         f"{self.fooddata_base_url}/food/{food_id}",
                         params={'api_key': self.fooddata_api_key},
@@ -394,6 +520,63 @@ class RealUSDAAPIClient:
         except Exception as e:
             logger.error(f"Error calculating nutritional efficiency: {e}")
             return {'efficiency_rating': 'unknown'}
+    
+    def _schedule_background_refresh(self, crop_type: str, state: str, year: int = None, data_type: str = 'yield'):
+        """Schedule background refresh of stale cache data"""
+        try:
+            from .tasks import refresh_usda_cache_data
+            
+            # Schedule Celery task for background refresh
+            refresh_usda_cache_data.delay(crop_type, state, year, data_type)
+            logger.info(f"Scheduled background refresh for {crop_type} {state} {data_type}")
+            
+        except ImportError:
+            # Fallback: refresh synchronously if Celery not available
+            logger.warning("Celery not available, performing synchronous refresh")
+            if data_type == 'yield':
+                self.get_nass_crop_data(crop_type, state, year)
+            elif data_type == 'benchmark':
+                self.get_benchmark_yield(crop_type, state)
+        except Exception as e:
+            logger.error(f"Failed to schedule background refresh: {e}")
+    
+    def calculate_carbon_intensity_cached(self, crop_type: str, state: str, 
+                                        farm_practices: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate carbon intensity with intelligent caching"""
+        try:
+            # Create hash of inputs for cache key
+            inputs_str = json.dumps(farm_practices, sort_keys=True)
+            inputs_hash = hashlib.md5(inputs_str.encode()).hexdigest()[:12]
+            
+            # Check cache first
+            cached_result, is_fresh = specialized_cache.get_cached_carbon_calculation(
+                crop_type, state, inputs_hash
+            )
+            
+            if cached_result and is_fresh:
+                logger.debug(f"Using cached carbon calculation for {crop_type} in {state}")
+                return cached_result
+            elif cached_result:
+                # Return stale data but trigger background recalculation
+                self._schedule_background_refresh(crop_type, state, None, 'carbon_calculation')
+                cached_result['data_freshness'] = 'stale_but_usable'
+                return cached_result
+            
+            # Perform fresh calculation
+            result = self.calculate_carbon_intensity(crop_type, state, farm_practices)
+            
+            # Cache the result
+            if result and not result.get('error'):
+                specialized_cache.cache_carbon_calculation(
+                    crop_type, state, inputs_hash, result
+                )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in cached carbon calculation: {e}")
+            # Fallback to non-cached calculation
+            return self.calculate_carbon_intensity(crop_type, state, farm_practices)
     
     def validate_calculation_methodology(self, calculation_data: Dict) -> Dict[str, Any]:
         """Validate calculation methodology against EPA/IPCC standards"""
@@ -503,14 +686,24 @@ class EPAEmissionFactorService:
 # Integration function for your existing system
 def get_real_usda_carbon_data(crop_type: str, state: str, farm_practices: Dict) -> Dict[str, Any]:
     """
-    Main function to integrate real USDA data with carbon calculations
+    Main function to integrate real USDA data with carbon calculations with caching and resilience
     This replaces the mock USDA API calls in enhanced_usda_factors.py
     """
     usda_client = RealUSDAAPIClient()
     epa_service = EPAEmissionFactorService()
     
-    # Get real calculation using actual APIs
-    carbon_data = usda_client.calculate_carbon_intensity(crop_type, state, farm_practices)
+    # Get cached calculation with circuit breaker protection
+    try:
+        carbon_data = safe_api_call(
+            'carbon_calc',
+            usda_client.calculate_carbon_intensity_cached,
+            crop_type, state, farm_practices
+        )
+    except CircuitBreakerOpenError:
+        logger.warning("Carbon calculation circuit breaker is open, using fallback")
+        carbon_data = usda_circuit_breakers.get_breaker('carbon_calc').fallback_func(
+            crop_type, state, farm_practices
+        )
     
     # Get nutritional data from FoodData Central
     nutritional_data = usda_client.get_nutritional_carbon_factors(crop_type)

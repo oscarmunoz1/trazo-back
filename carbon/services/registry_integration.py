@@ -7,20 +7,30 @@ import json
 logger = logging.getLogger(__name__)
 
 class RegistryIntegrationService:
-    """Integration with carbon registries - ICR (real API) + VCS/Gold Standard/CAR/ACR (mock services)"""
+    """Integration with carbon registries - ICR (real API) + VCS/Gold Standard/CAR/ACR (simulated for development)"""
 
     def __init__(self):
+        # Production mode detection
+        self.production_mode = getattr(settings, 'DEBUG', True) == False
+        
         # ICR - Real API Integration
         self.icr_sandbox_url = getattr(settings, 'ICR_SANDBOX_URL', 'https://sandbox-api.carbonregistry.com')
         self.icr_production_url = getattr(settings, 'ICR_PRODUCTION_URL', 'https://api.carbonregistry.com')
         self.icr_api_key = getattr(settings, 'ICR_API_KEY', '')
         self.use_icr_sandbox = getattr(settings, 'USE_ICR_SANDBOX', True)  # Default to sandbox
         
-        # Legacy URLs (for documentation - these APIs don't exist)
+        # Legacy URLs (for documentation - these APIs don't exist publicly)
         self.vcs_url = getattr(settings, 'VCS_REGISTRY_URL', 'https://registry.verra.org/api/v1')
         self.vcs_api_key = getattr(settings, 'VCS_API_KEY', '')
         self.gold_standard_url = getattr(settings, 'GOLD_STANDARD_API_URL', 'https://api.goldstandard.org/v1')
         self.gold_standard_api_key = getattr(settings, 'GOLD_STANDARD_API_KEY', '')
+        
+        # Warn about simulated registries in production
+        if self.production_mode:
+            logger.warning(
+                "Production mode detected: VCS, Gold Standard, CAR, and ACR registries are using simulated responses. "
+                "Only ICR provides real API integration. Consider implementing actual API calls for other registries."
+            )
 
     @property
     def icr_base_url(self):
@@ -89,8 +99,12 @@ class RegistryIntegrationService:
             }
 
     def verify_with_vcs(self, project_data: Dict) -> Dict[str, Any]:
-        """Mock VCS verification - API doesn't exist publicly"""
+        """VCS verification - SIMULATED RESPONSE (API not publicly available)"""
         project_id = project_data['project_id']
+        
+        # Log warning for production usage
+        if self.production_mode:
+            logger.warning(f"VCS verification for project {project_id} using SIMULATED response in production")
         
         # Real VCS project IDs for realistic simulation
         real_vcs_projects = {
@@ -131,19 +145,26 @@ class RegistryIntegrationService:
                 'verification_body': project['verification_body'],
                 'last_audit_date': '2024-01-15',
                 'project_url': f"https://registry.verra.org/app/projectDetail/VCS/{project_id}",
-                'note': 'Simulated response - VCS API not publicly available'
+                'simulated': True,  # Critical flag
+                'warning': 'SIMULATED RESPONSE - VCS API not publicly available',
+                'production_warning': 'This is not a real verification in production environment' if self.production_mode else None
             }
         else:
             return {
                 'verified': False, 
                 'registry': 'VCS',
                 'error': 'Project not found in VCS registry',
-                'note': 'Simulated response - VCS API not publicly available'
+                'simulated': True,
+                'warning': 'SIMULATED RESPONSE - VCS API not publicly available'
             }
 
     def verify_with_gold_standard(self, project_data: Dict) -> Dict[str, Any]:
-        """Mock Gold Standard verification - API doesn't exist publicly"""
+        """Gold Standard verification - SIMULATED RESPONSE (API not publicly available)"""
         project_id = project_data['project_id']
+        
+        # Log warning for production usage
+        if self.production_mode:
+            logger.warning(f"Gold Standard verification for project {project_id} using SIMULATED response in production")
         
         # Real Gold Standard project IDs for realistic simulation
         real_gs_projects = {
@@ -177,19 +198,26 @@ class RegistryIntegrationService:
                 'co_benefits': ['Poverty Alleviation', 'Health', 'Gender Equality'],
                 'last_audit_date': '2024-02-20',
                 'project_url': f"https://registry.goldstandard.org/projects/details/{project_id}",
-                'note': 'Simulated response - Gold Standard API not publicly available'
+                'simulated': True,  # Critical flag
+                'warning': 'SIMULATED RESPONSE - Gold Standard API not publicly available',
+                'production_warning': 'This is not a real verification in production environment' if self.production_mode else None
             }
         else:
             return {
                 'verified': False, 
                 'registry': 'Gold Standard',
                 'error': 'Project not found in Gold Standard registry',
-                'note': 'Simulated response - Gold Standard API not publicly available'
+                'simulated': True,
+                'warning': 'SIMULATED RESPONSE - Gold Standard API not publicly available'
             }
 
     def verify_with_car(self, project_data: Dict) -> Dict[str, Any]:
-        """Mock CAR verification - API doesn't exist publicly"""
+        """CAR verification - SIMULATED RESPONSE (API not publicly available)"""
         project_id = project_data['project_id']
+        
+        # Log warning for production usage
+        if self.production_mode:
+            logger.warning(f"CAR verification for project {project_id} using SIMULATED response in production")
         
         # Real CAR project examples
         real_car_projects = {
@@ -214,19 +242,26 @@ class RegistryIntegrationService:
                 'verification_body': project['verification_body'],
                 'last_audit_date': '2024-03-10',
                 'project_url': f"https://thereserve2.apx.com/myModule/rpt/myrpt.asp?r=111&project_id={project_id}",
-                'note': 'Simulated response - CAR API not publicly available'
+                'simulated': True,  # Critical flag
+                'warning': 'SIMULATED RESPONSE - CAR API not publicly available',
+                'production_warning': 'This is not a real verification in production environment' if self.production_mode else None
             }
         else:
             return {
                 'verified': False, 
                 'registry': 'CAR',
                 'error': 'Project not found in CAR registry',
-                'note': 'Simulated response - CAR API not publicly available'
+                'simulated': True,
+                'warning': 'SIMULATED RESPONSE - CAR API not publicly available'
             }
 
     def verify_with_acr(self, project_data: Dict) -> Dict[str, Any]:
-        """Mock ACR verification - API doesn't exist publicly"""
+        """ACR verification - SIMULATED RESPONSE (API not publicly available)"""
         project_id = project_data['project_id']
+        
+        # Log warning for production usage
+        if self.production_mode:
+            logger.warning(f"ACR verification for project {project_id} using SIMULATED response in production")
         
         # Real ACR project examples
         real_acr_projects = {
@@ -251,14 +286,17 @@ class RegistryIntegrationService:
                 'verification_body': project['verification_body'],
                 'last_audit_date': '2024-01-25',
                 'project_url': f"https://acr2.apx.com/myModule/rpt/myrpt.asp?r=111&project_id={project_id}",
-                'note': 'Simulated response - ACR API not publicly available'
+                'simulated': True,  # Critical flag
+                'warning': 'SIMULATED RESPONSE - ACR API not publicly available',
+                'production_warning': 'This is not a real verification in production environment' if self.production_mode else None
             }
         else:
             return {
                 'verified': False, 
                 'registry': 'ACR',
                 'error': 'Project not found in ACR registry',
-                'note': 'Simulated response - ACR API not publicly available'
+                'simulated': True,
+                'warning': 'SIMULATED RESPONSE - ACR API not publicly available'
             }
 
     def get_methodology_template(self, methodology_type: str) -> Dict[str, Any]:

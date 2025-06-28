@@ -15,6 +15,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 import hashlib
 from .real_usda_integration import get_real_usda_carbon_data, RealUSDAAPIClient
+from .emission_factors import emission_factors
 
 logger = logging.getLogger(__name__)
 
@@ -128,15 +129,18 @@ class EnhancedUSDAFactors:
         self.usda_api_client = USDAAPIClient()
         self.regional_cache = RegionalDataCache()
         
-        # Base USDA emission factors (duplicated to avoid circular import)
+        # Get standardized USDA emission factors from centralized registry
         self.base_usda_factors = {
-            'nitrogen': 5.86,    # kg CO2e per kg N (USDA default)
-            'phosphorus': 0.20,  # kg CO2e per kg P2O5
-            'potassium': 0.15,   # kg CO2e per kg K2O
-            'diesel': 2.68,      # kg CO2e per liter
-            'gasoline': 2.31,    # kg CO2e per liter
-            'natural_gas': 2.03, # kg CO2e per m³
+            'nitrogen': emission_factors.get_fertilizer_factor('nitrogen')['value'],
+            'phosphorus': emission_factors.get_fertilizer_factor('phosphorus')['value'],
+            'potassium': emission_factors.get_fertilizer_factor('potassium')['value'],
+            'diesel': emission_factors.get_fuel_factor('diesel')['value'],
+            'gasoline': emission_factors.get_fuel_factor('gasoline')['value'],
+            'natural_gas': emission_factors.get_fuel_factor('natural_gas')['value'],
         }
+        
+        logger.info(f"EnhancedUSDAFactors initialized with standardized factors v{emission_factors.VERSION}")
+        logger.info(f"Nitrogen factor: {self.base_usda_factors['nitrogen']} kg CO2e per kg N (USDA-verified)")
         
         # Regional adjustment factors based on USDA Agricultural Research Service data
         self.regional_adjustments = {

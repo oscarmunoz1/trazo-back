@@ -374,10 +374,9 @@ class CarbonEntry(models.Model):
     verification_status = models.CharField(max_length=50, default='estimated', help_text='factors_verified, estimated, calculation_error')
     data_source = models.CharField(max_length=200, default='Unknown', help_text='Source of emission factors (e.g., USDA Agricultural Research Service)')
     
-    # Enhanced verification fields for offset verification system
+    # Enhanced verification fields for offset verification system - MVP 2-tier system
     VERIFICATION_LEVEL_CHOICES = [
         ('self_reported', 'Self Reported'),
-        ('community_verified', 'Community Verified'),
         ('certified_project', 'Certified Project'),
     ]
     
@@ -412,9 +411,6 @@ class CarbonEntry(models.Model):
     evidence_photos = models.JSONField(default=list, blank=True, help_text='List of photo URLs as evidence')
     evidence_documents = models.JSONField(default=list, blank=True, help_text='List of document URLs as evidence')
     
-    # Community verification fields
-    attestation_count = models.IntegerField(default=0, help_text='Number of community attestations received')
-    community_attestations = models.JSONField(default=list, blank=True, help_text='List of community attestations')
     
     created_at = models.DateTimeField(auto_now=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -446,7 +442,6 @@ class CarbonEntry(models.Model):
         if self.type == 'offset' and not hasattr(self, '_verification_processed'):
             trust_scores = {
                 'self_reported': 0.5,
-                'community_verified': 0.75,
                 'certified_project': 1.0
             }
             # Only set trust score if it's still the default
@@ -469,7 +464,6 @@ class CarbonEntry(models.Model):
         """Return verification badge configuration"""
         badges = {
             'self_reported': {'color': 'orange', 'text': 'Self Reported', 'icon': 'document'},
-            'community_verified': {'color': 'blue', 'text': 'Community Verified', 'icon': 'users'},
             'certified_project': {'color': 'green', 'text': 'Certified Project', 'icon': 'certificate'}
         }
         return badges.get(self.verification_level, badges['self_reported'])

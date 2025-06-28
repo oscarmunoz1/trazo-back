@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 from decimal import Decimal
 import logging
 from ..models import CarbonSource, CarbonBenchmark
+from .emission_factors import emission_factors
 
 logger = logging.getLogger(__name__)
 
@@ -9,27 +10,32 @@ class CarbonFootprintCalculator:
     """Service for calculating carbon footprints based on various inputs"""
 
     def __init__(self):
+        # Get standardized USDA-verified emission factors from centralized registry
         self.usda_factors = {
             'fertilizer': {
-                'nitrogen': 6.7,  # kg CO2e per kg of N
-                'phosphorus': 0.6,  # kg CO2e per kg of P2O5
-                'potassium': 0.4,  # kg CO2e per kg of K2O
+                'nitrogen': emission_factors.get_fertilizer_factor('nitrogen')['value'],
+                'phosphorus': emission_factors.get_fertilizer_factor('phosphorus')['value'],
+                'potassium': emission_factors.get_fertilizer_factor('potassium')['value'],
             },
             'fuel': {
-                'diesel': 2.7,  # kg CO2e per liter
-                'gasoline': 2.3,  # kg CO2e per liter
-                'lpg': 1.7,  # kg CO2e per liter
+                'diesel': emission_factors.get_fuel_factor('diesel')['value'],
+                'gasoline': emission_factors.get_fuel_factor('gasoline')['value'],
+                'lpg': emission_factors.get_fuel_factor('lpg')['value'],
             },
             'electricity': {
-                'grid': 0.4,  # kg CO2e per kWh (US average)
-                'solar': 0.0,  # kg CO2e per kWh
-                'wind': 0.0,  # kg CO2e per kWh
+                'grid': emission_factors.get_electricity_factor('grid')['value'],
+                'solar': emission_factors.get_electricity_factor('solar')['value'],
+                'wind': emission_factors.get_electricity_factor('wind')['value'],
             },
             'water': {
-                'irrigation': 0.3,  # kg CO2e per m3
-                'pumping': 0.2,  # kg CO2e per m3
+                'irrigation': emission_factors.get_water_factor('irrigation')['value'],
+                'pumping': emission_factors.get_water_factor('pumping')['value'],
             }
         }
+        
+        # Log the standardization for audit purposes
+        logger.info(f"CarbonFootprintCalculator initialized with standardized USDA factors v{emission_factors.VERSION}")
+        logger.info(f"Nitrogen factor: {self.usda_factors['fertilizer']['nitrogen']} kg CO2e per kg N (USDA-verified)")
 
     def calculate_farm_footprint(self,
                                inputs: Dict[str, Any],

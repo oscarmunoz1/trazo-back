@@ -26,17 +26,15 @@ class VerificationService:
     RAPID_SUBMISSION_THRESHOLD = 5  # entries per day
     UNREALISTIC_OFFSET_RATIO = 2.0  # offset-to-emission ratio threshold
     
-    # Buffer pool percentages (following Indigo Ag and Agoro practices)
+    # Buffer pool percentages (following Indigo Ag and Agoro practices) - MVP 2-tier system
     BUFFER_POOLS = {
         'self_reported': 0.20,      # 20% buffer for self-reported
-        'community_verified': 0.15,  # 15% buffer for community verified
         'certified_project': 0.10,   # 10% buffer for certified projects
     }
     
-    # Trust scores (conservative approach)
+    # Trust scores (conservative approach) - MVP 2-tier system
     TRUST_SCORES = {
         'self_reported': 0.5,        # 50% trust for self-reported
-        'community_verified': 0.75,  # 75% trust for community verified
         'certified_project': 1.0,    # 100% trust for certified projects
     }
 
@@ -463,7 +461,7 @@ class VerificationService:
             monthly_total = CarbonEntry.objects.filter(
                 Q(establishment=establishment) | Q(created_by=user),
                 type='offset',
-                verification_level__in=['self_reported', 'community_verified'],
+                verification_level='self_reported',
                 created_at__gte=month_start
             ).aggregate(total=Sum('amount'))['total'] or 0
             
@@ -476,7 +474,7 @@ class VerificationService:
             annual_total = CarbonEntry.objects.filter(
                 Q(establishment=establishment) | Q(created_by=user),
                 type='offset',
-                verification_level__in=['self_reported', 'community_verified'],
+                verification_level='self_reported',
                 created_at__gte=year_start
             ).aggregate(total=Sum('amount'))['total'] or 0
             
@@ -579,33 +577,119 @@ class VerificationService:
         return result
 
     def _validate_evidence_requirements(self, carbon_entry) -> Dict[str, Any]:
-        """Validate evidence requirements based on verification level and amount."""
-        result = {'complete': True, 'missing': []}
+        """
+        Enhanced evidence validation for MVP-aligned verification with photo documentation.
+        
+        Implements tiered evidence requirements based on amount and verification level,
+        supporting Trazo's transparency mission while maintaining security.
+        """
+        result = {'complete': True, 'missing': [], 'recommendations': []}
         
         # Evidence requirements based on amount and verification level
         if carbon_entry.verification_level == 'self_reported':
-            if carbon_entry.amount > 25:  # Stricter than before
-                if not carbon_entry.evidence_photos:
+            
+            # Basic requirements for all self-reported offsets >10 kg CO2e
+            if carbon_entry.amount > 10:
+                if not carbon_entry.description or len(carbon_entry.description) < 30:
+                    result['complete'] = False
+                    result['missing'].append('Detailed description (min 30 characters) required for transparency')
+            
+            # Photo evidence requirements - tiered approach
+            if carbon_entry.amount > 25:  # 25 kg CO2e threshold for photos
+                photo_count = len(carbon_entry.evidence_photos or [])
+                
+                if photo_count == 0:
                     result['complete'] = False
                     result['missing'].append('Photo evidence required for self-reported offsets >25 kg CO2e')
+                elif photo_count == 1:
+                    result['recommendations'].append('Consider adding multiple photos showing different aspects of the offset activity')
                 
+                # Enhanced description requirements with photos
                 if not carbon_entry.description or len(carbon_entry.description) < 50:
                     result['complete'] = False
-                    result['missing'].append('Detailed description (min 50 characters) required')
+                    result['missing'].append('Detailed description (min 50 characters) required with photo evidence')
             
+            # Medium-scale offset requirements (50-100 kg CO2e)
+            if carbon_entry.amount > 50:
+                photo_count = len(carbon_entry.evidence_photos or [])
+                
+                if photo_count < 2:
+                    result['recommendations'].append('Multiple photos recommended for offsets >50 kg CO2e to show scale and context')
+                
+                # Basic additionality evidence
+                if not carbon_entry.additionality_evidence:
+                    result['recommendations'].append('Consider providing additionality evidence explaining why this offset activity is additional')
+            
+            # Large offset requirements (>100 kg CO2e) - more stringent
             if carbon_entry.amount > 100:
+                photo_count = len(carbon_entry.evidence_photos or [])
+                
+                # Mandatory multiple photos for large offsets
+                if photo_count < 2:
+                    result['complete'] = False
+                    result['missing'].append('Multiple photos required for offsets >100 kg CO2e to demonstrate scale')
+                
+                # Mandatory additionality evidence for large claims
                 if not carbon_entry.additionality_evidence:
                     result['complete'] = False
                     result['missing'].append('Additionality evidence required for offsets >100 kg CO2e')
                 
+                # Baseline data recommended for large offsets
                 if not carbon_entry.baseline_data:
+                    result['missing'].append('Baseline data required for large offset claims to establish conservative estimates')
                     result['complete'] = False
-                    result['missing'].append('Baseline data required for large offset claims')
-
-        elif carbon_entry.verification_level == 'community_verified':
-            if carbon_entry.attestation_count < 2:
+                
+                # Enhanced description for large offsets
+                if not carbon_entry.description or len(carbon_entry.description) < 100:
+                    result['complete'] = False
+                    result['missing'].append('Comprehensive description (min 100 characters) required for large offset claims')
+            
+            # Very large offset requirements (>500 kg CO2e) - requires near-certified level evidence
+            if carbon_entry.amount > 500:
+                photo_count = len(carbon_entry.evidence_photos or [])
+                
+                if photo_count < 3:
+                    result['complete'] = False
+                    result['missing'].append('Minimum 3 photos required for very large offsets (>500 kg CO2e)')
+                
+                if not carbon_entry.permanence_plan:
+                    result['complete'] = False
+                    result['missing'].append('Permanence plan required for very large offset claims')
+                
+                # Recommend upgrade to certified project
+                result['recommendations'].append('Consider upgrading to certified project verification for offsets >500 kg CO2e to receive 100% credit')
+        
+        elif carbon_entry.verification_level == 'certified_project':
+            # Certified projects have different requirements
+            if not carbon_entry.registry_verification_id:
                 result['complete'] = False
-                result['missing'].append('Minimum 2 community attestations required')
+                result['missing'].append('Registry verification ID required for certified projects')
+            
+            if not carbon_entry.third_party_verification_url:
+                result['recommendations'].append('Third-party verification URL recommended for transparency')
+        
+        # Photo quality recommendations (for entries with photos)
+        if carbon_entry.evidence_photos:
+            photo_count = len(carbon_entry.evidence_photos)
+            
+            # Check for timestamp diversity (photos taken on different days)
+            photo_dates = set()
+            for photo in carbon_entry.evidence_photos:
+                timestamp = photo.get('upload_timestamp', '')
+                if timestamp:
+                    date_part = timestamp.split('T')[0]  # Extract date part
+                    photo_dates.add(date_part)
+            
+            if photo_count > 1 and len(photo_dates) == 1:
+                result['recommendations'].append('Consider taking photos on different dates to show progress over time')
+        
+        # Calculate evidence completeness score for transparency
+        total_requirements = len(result['missing']) + (1 if result['complete'] else 0)
+        if total_requirements > 0:
+            completeness_score = (1 if result['complete'] else 0) / total_requirements * 100
+            result['completeness_score'] = round(completeness_score)
+        else:
+            result['completeness_score'] = 100
 
         return result
 
@@ -639,11 +723,9 @@ class VerificationService:
         return any(audit_triggers)
 
     def _determine_verification_tier(self, carbon_entry) -> str:
-        """Determine verification tier following registry standards."""
+        """Determine verification tier following registry standards - MVP 2-tier system."""
         if carbon_entry.verification_level == 'certified_project':
-            return 'tier_3_certified'
-        elif carbon_entry.verification_level == 'community_verified':
-            return 'tier_2_community'
+            return 'tier_2_certified'
         else:
             return 'tier_1_self_reported'
 
@@ -657,7 +739,7 @@ class VerificationService:
         
         if not verification_result['evidence_complete']:
             recommendations.append("Add photo documentation and detailed practice descriptions")
-            recommendations.append("Consider community verification to increase trust score")
+            recommendations.append("Consider upgrading to certified project verification to increase trust score")
         
         if verification_result['audit_required']:
             recommendations.append("Large offset claims will be scheduled for third-party audit")

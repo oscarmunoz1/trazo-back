@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import (
     CropType, ProductionTemplate, EventTemplate,
     CarbonSource,
@@ -260,8 +261,73 @@ class CarbonEntrySerializer(serializers.ModelSerializer):
                   'description', 'source', 'source_id', 'created_at', 'created_by',
                   'usda_verified', 'establishment_id', 'production_id',
                   'verification_level', 'trust_score', 'effective_amount',
-                  'additionality_verified', 'audit_status', 'registry_verification_id']
-        read_only_fields = ['created_at', 'created_by', 'usda_verified', 'effective_amount']
+                  'additionality_verified', 'audit_status', 'registry_verification_id',
+                  'evidence_photos', 'evidence_documents', 'evidence_requirements_met',
+                  'documentation_complete', 'additionality_evidence', 'baseline_data',
+                  'permanence_plan', 'audit_scheduled_date', 'third_party_verification_url']
+        read_only_fields = ['created_at', 'created_by', 'usda_verified', 'effective_amount', 
+                           'evidence_requirements_met', 'documentation_complete']
+    
+    def validate_amount(self, value):
+        """Validate carbon amount to prevent excessive or invalid values"""
+        if value is None:
+            raise serializers.ValidationError("Amount is required")
+        
+        # Convert to float to handle both int and float inputs
+        try:
+            amount = float(value)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Amount must be a valid number")
+        
+        # Validate range (0.01 to 10,000 kg CO2e)
+        if amount < 0.01:
+            raise serializers.ValidationError("Amount must be at least 0.01 kg CO2e")
+        
+        if amount > 10000:
+            raise serializers.ValidationError("Amount cannot exceed 10,000 kg CO2e")
+        
+        # Check for reasonable precision (max 3 decimal places)
+        if round(amount, 3) != amount:
+            raise serializers.ValidationError("Amount can have at most 3 decimal places")
+        
+        return amount
+    
+    def validate_year(self, value):
+        """Validate year to prevent unrealistic values"""
+        if value is None:
+            return value
+        
+        current_year = timezone.now().year
+        if value < 1900:
+            raise serializers.ValidationError("Year cannot be before 1900")
+        
+        if value > current_year + 5:
+            raise serializers.ValidationError(f"Year cannot be more than 5 years in the future (current year: {current_year})")
+        
+        return value
+    
+    def validate_type(self, value):
+        """Validate carbon entry type"""
+        if not value:
+            raise serializers.ValidationError("Type is required")
+        
+        valid_types = ['emission', 'offset', 'sequestration', 'reduction']
+        if value not in valid_types:
+            raise serializers.ValidationError(f"Type must be one of: {', '.join(valid_types)}")
+        
+        return value
+    
+    def validate_description(self, value):
+        """Validate description field"""
+        if value and len(value) > 500:
+            raise serializers.ValidationError("Description cannot exceed 500 characters")
+        
+        # Basic security check for potential XSS
+        import re
+        if value and re.search(r'<script|javascript:|on\w+\s*=', value, re.IGNORECASE):
+            raise serializers.ValidationError("Description contains potentially malicious content")
+        
+        return value
 
     def validate(self, data):
         # Handle both establishment and establishment_id
@@ -365,6 +431,49 @@ class CarbonOffsetPurchaseSerializer(serializers.ModelSerializer):
             'certificate_url', 'notes'
         ]
         read_only_fields = ('total_price', 'transaction_id', 'purchase_date', 'certificate_url')
+
+    def validate_amount(self, value):
+        """Validate carbon offset amount"""
+        if value is None:
+            raise serializers.ValidationError("Amount is required")
+        
+        # Convert to float to handle both int and float inputs
+        try:
+            amount = float(value)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Amount must be a valid number")
+        
+        # Validate range (0.01 to 1000 tons CO2e for offsets)
+        if amount < 0.01:
+            raise serializers.ValidationError("Amount must be at least 0.01 tons CO2e")
+        
+        if amount > 1000:
+            raise serializers.ValidationError("Amount cannot exceed 1,000 tons CO2e per purchase")
+        
+        # Check for reasonable precision (max 2 decimal places for tons)
+        if round(amount, 2) != amount:
+            raise serializers.ValidationError("Amount can have at most 2 decimal places")
+        
+        return amount
+    
+    def validate_price_per_ton(self, value):
+        """Validate price per ton"""
+        if value is None:
+            raise serializers.ValidationError("Price per ton is required")
+        
+        try:
+            price = float(value)
+        except (ValueError, TypeError):
+            raise serializers.ValidationError("Price must be a valid number")
+        
+        # Validate reasonable price range ($1 to $500 per ton)
+        if price < 1:
+            raise serializers.ValidationError("Price per ton must be at least $1")
+        
+        if price > 500:
+            raise serializers.ValidationError("Price per ton cannot exceed $500")
+        
+        return price
 
     def validate(self, data):
         project = data.get('project')

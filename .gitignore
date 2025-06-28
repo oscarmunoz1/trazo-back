@@ -102,3 +102,14 @@ pip-wheel-metadata
 poetry/core/*
 
 *.db
+
+# Security and sensitive files
+.env.local
+.env.production
+.env.staging
+*.key
+*.pem
+*.cert
+*.crt
+logs/security.log*
+logs/*.log

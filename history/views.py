@@ -608,6 +608,89 @@ class HistoryViewSet(viewsets.ModelViewSet):
             })
         return Response(reviews_data)
 
+    @action(detail=False, methods=['post'], permission_classes=[AllowAny])
+    def validate_qr(self, request):
+        """
+        Validate QR code and return production information if valid.
+        Accepts QR code data, URL, or production ID.
+        """
+        qr_data = request.data.get('qr_data', '').strip()
+        
+        if not qr_data:
+            return Response(
+                {"error": "QR code data is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            # Try to extract production ID from different formats
+            production_id = None
+            
+            # Case 1: Direct production ID (numeric)
+            if qr_data.isdigit():
+                production_id = int(qr_data)
+            
+            # Case 2: URL containing production ID
+            elif qr_data.startswith(('http://', 'https://')):
+                from urllib.parse import urlparse
+                parsed_url = urlparse(qr_data)
+                path_parts = parsed_url.path.strip('/').split('/')
+                
+                # Look for /production/{id} pattern
+                if 'production' in path_parts:
+                    prod_index = path_parts.index('production')
+                    if prod_index + 1 < len(path_parts):
+                        potential_id = path_parts[prod_index + 1]
+                        if potential_id.isdigit():
+                            production_id = int(potential_id)
+            
+            # Case 3: Try to parse as production ID directly
+            else:
+                try:
+                    production_id = int(qr_data)
+                except ValueError:
+                    # Last attempt: check if it contains digits
+                    import re
+                    numbers = re.findall(r'\d+', qr_data)
+                    if numbers:
+                        production_id = int(numbers[0])
+            
+            if production_id is None:
+                return Response(
+                    {"error": "Invalid QR code format. Unable to extract production ID."}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Look up the production
+            try:
+                history = History.objects.select_related(
+                    'product', 
+                    'parcel__establishment__company'
+                ).get(id=production_id, published=True)
+            except History.DoesNotExist:
+                return Response(
+                    {"error": "Production not found or not published"}, 
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Return validation success with basic production info
+            return Response({
+                "valid": True,
+                "production_id": history.id,
+                "production_name": history.name,
+                "product_name": history.product.name if history.product else None,
+                "establishment_name": history.parcel.establishment.name if history.parcel else None,
+                "company_name": history.parcel.establishment.company.name if history.parcel and history.parcel.establishment else None,
+                "qr_code_url": history.qr_code.url if history.qr_code else None,
+                "redirect_url": f"/scan/production/{history.id}"
+            })
+            
+        except Exception as e:
+            return Response(
+                {"error": f"Error validating QR code: {str(e)}"}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class PublicHistoryScanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"])
