@@ -44,7 +44,9 @@ class SecureKeyManager:
         self.kms_key_id = getattr(settings, 'AWS_KMS_KEY_ID', None)
         
         # Environment checks - need to be set before AWS client initialization
-        self.is_production = not getattr(settings, 'DEBUG', True)
+        # Consider staging as non-production for AWS requirements
+        environment = getattr(settings, 'ENVIRONMENT', 'development').lower()
+        self.is_production = environment == 'production' and not getattr(settings, 'DEBUG', True)
         self.force_aws_keys = getattr(settings, 'FORCE_AWS_KEY_MANAGEMENT', False)
         
         # Key rotation settings
@@ -58,6 +60,17 @@ class SecureKeyManager:
     
     def _init_aws_clients(self):
         """Initialize AWS clients with proper configuration and error handling"""
+        # Check if AWS services are explicitly disabled
+        aws_enabled = getattr(settings, 'AWS_SERVICES_ENABLED', True)
+        if isinstance(aws_enabled, str):
+            aws_enabled = aws_enabled.lower() == 'true'
+        
+        if not aws_enabled:
+            logger.info("AWS services disabled via settings - using local fallbacks")
+            self.kms_client = None
+            self.secrets_client = None
+            return
+        
         try:
             # Use IAM roles in production, credentials for development
             session = boto3.Session(region_name=self.aws_region)

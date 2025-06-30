@@ -23,6 +23,7 @@ psycopg2-binary==2.9.10
 pycparser==2.21
 PyJWT==2.6.0
 python-dotenv==0.21.0
+python-decouple==3.8
 python3-openid==3.2.0
 pytz==2022.7
 qrcode==7.3.1

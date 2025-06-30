@@ -49,8 +49,18 @@ class BlockchainCarbonService:
         self.web3 = None
         self.contract = None
         self.account = None
-        self.production_mode = getattr(settings, 'DEBUG', True) == False
-        self.blockchain_required = self.production_mode or getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
+        # Consider staging as non-production for blockchain requirements
+        environment = getattr(settings, 'ENVIRONMENT', 'development').lower()
+        debug_mode = getattr(settings, 'DEBUG', True)
+        force_blockchain = getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
+        
+        self.production_mode = environment == 'production' and debug_mode == False
+        self.blockchain_required = self.production_mode or force_blockchain
+        
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Blockchain init debug: env={environment}, debug={debug_mode}, force={force_blockchain}, prod_mode={self.production_mode}, required={self.blockchain_required}")
         self.network_name = getattr(settings, 'BLOCKCHAIN_NETWORK_NAME', 'polygon_amoy')
         self.explorer_url = getattr(settings, 'POLYGON_EXPLORER_URL', 'https://amoy.polygonscan.com')
         

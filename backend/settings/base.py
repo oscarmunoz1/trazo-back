@@ -37,7 +37,7 @@ SECRET_KEY = config("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = [config("ALLOWED_HOSTS")]
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1").split(",")
 
 # Application definition
 
@@ -67,7 +67,9 @@ INSTALLED_APPS = [
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
-    "allauth.socialaccount.providers.google",  # for Google OAuth 2.0
+    "allauth.socialaccount.providers.google",     # for Google OAuth 2.0
+    "allauth.socialaccount.providers.facebook",   # for Facebook OAuth 2.0
+    "allauth.socialaccount.providers.apple",      # for Apple Sign In
     # Celery and Redis
     "django_celery_beat",
     "django_redis",

@@ -1,38 +1,49 @@
 # Production Settings Override
-DEBUG = False  # Explicitly disable debug in production
+
+import os
+from decouple import config
+from backend.settings.base import *
+
+# Explicitly disable debug in production
+DEBUG = False
 
 # Validate SECRET_KEY for production
 SECRET_KEY = config('SECRET_KEY')
 if not SECRET_KEY or len(SECRET_KEY) < 50:
     raise ValueError("Production requires a strong SECRET_KEY with at least 50 characters")
 
-import os
-
-from backend.settings.base import *
-from decouple import config
-
-
 ALLOWED_HOSTS = [
     "api.trazo.io",
-    os.environ.get("LOAD_BALANCER_DNS", "localhost")
+    "api-staging.trazo.io",
+    os.environ.get("LOAD_BALANCER_DNS", "localhost"),
+    os.environ.get("RAILWAY_STATIC_URL", "localhost")
 ]
-
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.trazo.io",
     "https://trazo.io",
-    "https://api.trazo.io"
+    "https://api.trazo.io",
+    "https://api-staging.trazo.io"
 ]
 
 CORS_ORIGIN_ALLOW_ALL = True
 
-CORS_ORIGIN_WHITELIST = ["https://app.trazo.io", "https://trazo.io"]
+CORS_ORIGIN_WHITELIST = [
+    "https://app.trazo.io", 
+    "https://trazo.io",
+    "https://app-staging.trazo.io",
+    "https://staging.trazo.io"
+]
 CORS_ALLOW_CREDENTIALS = True
 
-CORS_ALLOWED_ORIGINS = ["https://app.trazo.io", "https://trazo.io"]
+CORS_ALLOWED_ORIGINS = [
+    "https://app.trazo.io", 
+    "https://trazo.io",
+    "https://app-staging.trazo.io",
+    "https://staging.trazo.io"
+]
 
 CSRF_COOKIE_DOMAIN = "trazo.io"
-
 
 CSRF_COOKIE_SECURE = True
 
@@ -117,8 +128,8 @@ CARBON_CONTRACT_ADDRESS = config('CARBON_CONTRACT_ADDRESS', default=None)
 BLOCKCHAIN_PRIVATE_KEY = config('BLOCKCHAIN_PRIVATE_KEY', default=None)
 POLYGON_EXPLORER_URL = config('POLYGON_EXPLORER_URL', default='https://polygonscan.com')
 
-# Force blockchain verification in production (no mock fallbacks)
-FORCE_BLOCKCHAIN_VERIFICATION = True
+# Force blockchain verification configuration
+FORCE_BLOCKCHAIN_VERIFICATION = config('FORCE_BLOCKCHAIN_VERIFICATION', default=False, cast=bool)
 
 # Production blockchain validation
 if BLOCKCHAIN_ENABLED:
@@ -130,12 +141,27 @@ if BLOCKCHAIN_ENABLED:
     
     missing_vars = [var for var, value in required_blockchain_vars if not value]
     if missing_vars:
-        raise ValueError(
-            f"Production blockchain is enabled but missing required environment variables: {', '.join(missing_vars)}. "
-            f"Set these variables or set BLOCKCHAIN_ENABLED=False to disable blockchain features."
-        )
+        # For staging, log warning instead of failing
+        environment = config('ENVIRONMENT', default='production')
+        if environment == 'staging':
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Staging blockchain is enabled but missing environment variables: {', '.join(missing_vars)}. "
+                f"Blockchain features may not work properly."
+            )
+        else:
+            raise ValueError(
+                f"Production blockchain is enabled but missing required environment variables: {', '.join(missing_vars)}. "
+                f"Set these variables or set BLOCKCHAIN_ENABLED=False to disable blockchain features."
+            )
 
 # ICR (International Carbon Registry) Configuration
 ICR_API_KEY = config('ICR_API_KEY', default=None)
 ICR_PRODUCTION_URL = config('ICR_PRODUCTION_URL', default='https://api.carbonregistry.com')
 USE_ICR_SANDBOX = config('USE_ICR_SANDBOX', default=False, cast=bool)  # Production uses real API
+
+# AWS Services Configuration
+AWS_SERVICES_ENABLED = config('AWS_SERVICES_ENABLED', default=True, cast=bool)
+FORCE_AWS_KEY_MANAGEMENT = config('FORCE_AWS_KEY_MANAGEMENT', default=False, cast=bool)
+ENVIRONMENT = config('ENVIRONMENT', default='production')
