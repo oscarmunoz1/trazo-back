@@ -85,6 +85,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "carbon.middleware.security_middleware.CarbonSecurityMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     'subscriptions.middleware.SubscriptionMiddleware',
@@ -105,6 +106,7 @@ DJANGO_RATELIMIT_RATELIMITED_RESPONSE = 'Too many requests'
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ("users.auth.CustomAuthentication",),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle"
@@ -394,8 +396,25 @@ STATIC_URL = "/static/"
 STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 # CORS settings
-
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://app.localhost:3000", 
+    "http://consumer.localhost:3000",
+    "http://127.0.0.1:3000",
+]
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all origins in development
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 # django-allauth settings
 
@@ -430,8 +449,20 @@ SOCIALACCOUNT_PROVIDERS = {
 
 JWT_EXPIRATION_DELTA = timedelta(seconds=20)
 
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# Cookie security settings - adjust based on environment
+SESSION_COOKIE_SECURE = not DEBUG  # Only secure in production
+CSRF_COOKIE_SECURE = not DEBUG     # Only secure in production
+CSRF_COOKIE_HTTPONLY = False       # Allow JavaScript access to CSRF token
+CSRF_COOKIE_SAMESITE = 'Lax'       # Less restrictive for development
+CSRF_COOKIE_DOMAIN = None          # No domain restriction in development
+CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", default="http://localhost:3000,http://app.localhost:3000").split(",")
+
+# Session configuration
+SESSION_COOKIE_AGE = 86400  # 24 hours
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_NAME = 'sessionid'
 
 FILE_UPLOAD_MAX_MEMORY_SIZE = (
     1024 * 1024 * 10
@@ -463,10 +494,10 @@ SIMPLE_JWT = {
     # custom
     "AUTH_COOKIE": "access",  # Cookie name. Enables cookies if value is set.
     "AUTH_COOKIE_DOMAIN": None,  # A string like "example.com", or None for standard domain cookie.
-    "AUTH_COOKIE_SECURE": True,  # Whether the auth cookies should be secure (https:// only).
+    "AUTH_COOKIE_SECURE": not DEBUG,  # Whether the auth cookies should be secure (https:// only).
     "AUTH_COOKIE_HTTP_ONLY": True,  # Http only cookie flag.It's not fetch by javascript.
     "AUTH_COOKIE_PATH": "/",  # The path of the auth cookie.
-    "AUTH_COOKIE_SAMESITE": "None",  # Whether to set the flag restricting cookie leaks on cross-site requests. This can be 'Lax', 'Strict', or None to disable the flag.
+    "AUTH_COOKIE_SAMESITE": "Lax" if DEBUG else "None",  # Whether to set the flag restricting cookie leaks on cross-site requests. This can be 'Lax', 'Strict', or None to disable the flag.
 }
 
 # Stripe Settings
@@ -535,3 +566,39 @@ APPLE_CLIENT_ID = config("APPLE_CLIENT_ID", default="")
 APPLE_TEAM_ID = config("APPLE_TEAM_ID", default="")
 APPLE_KEY_ID = config("APPLE_KEY_ID", default="")
 APPLE_PRIVATE_KEY = config("APPLE_PRIVATE_KEY", default="")
+
+# Enhanced Security Configuration
+BLOCKCHAIN_MULTISIG_ENABLED = config("BLOCKCHAIN_MULTISIG_ENABLED", default=False, cast=bool)
+BLOCKCHAIN_REQUIRED_SIGNATURES = config("BLOCKCHAIN_REQUIRED_SIGNATURES", default=2, cast=int)
+BLOCKCHAIN_SIGNERS = config("BLOCKCHAIN_SIGNERS", default="").split(",") if config("BLOCKCHAIN_SIGNERS", default="") else []
+
+# AWS Security Configuration
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+AWS_REGION = config("AWS_REGION", default="us-east-1")
+AWS_KMS_KEY_ID = config("AWS_KMS_KEY_ID", default="")
+AWS_SECRETS_MANAGER_REGION = config("AWS_SECRETS_MANAGER_REGION", default="us-east-1")
+
+# Key Management Configuration
+KEY_ROTATION_DAYS = config("KEY_ROTATION_DAYS", default=30, cast=int)
+SECURE_KEY_STORAGE_ENABLED = config("SECURE_KEY_STORAGE_ENABLED", default=False, cast=bool)
+
+# Registry Integration Configuration
+ICR_API_KEY = config("ICR_API_KEY", default="")
+ICR_API_URL = config("ICR_API_URL", default="https://api.internationalcarbonregistry.org/v1/")
+REGISTRY_VERIFICATION_TIMEOUT = config("REGISTRY_VERIFICATION_TIMEOUT", default=30, cast=int)
+
+# USDA API Configuration
+USDA_API_KEY = config("USDA_API_KEY", default="")
+USDA_FDC_API_KEY = config("USDA_FDC_API_KEY", default="")
+USDA_NASS_API_KEY = config("USDA_NASS_API_KEY", default="")
+
+# Carbon Security Configuration
+CARBON_SECURITY_ENABLED = config("CARBON_SECURITY_ENABLED", default=True, cast=bool)
+CARBON_AUDIT_ENABLED = config("CARBON_AUDIT_ENABLED", default=True, cast=bool)
+TRUST_SCORE_THRESHOLD = config("TRUST_SCORE_THRESHOLD", default=0.7, cast=float)
+
+# Photo Evidence Configuration
+PHOTO_EVIDENCE_MAX_SIZE = config("PHOTO_EVIDENCE_MAX_SIZE", default=10*1024*1024, cast=int)  # 10MB
+PHOTO_EVIDENCE_ALLOWED_TYPES = config("PHOTO_EVIDENCE_ALLOWED_TYPES", default="image/jpeg,image/png,image/webp").split(",")
+PHOTO_EVIDENCE_COMPRESSION_QUALITY = config("PHOTO_EVIDENCE_COMPRESSION_QUALITY", default=85, cast=int)

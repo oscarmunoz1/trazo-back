@@ -31,11 +31,21 @@ class CustomAuthentication(JWTAuthentication):
 
         validated_token = self.get_validated_token(raw_token)
         
-        # Skip CSRF check for logout endpoint
-        if request.path == '/auth/logout/':
-            # Logout is inherently safe and should not require CSRF
-            pass
-        else:
-            enforce_csrf(request)
+        # Only enforce CSRF for state-changing operations (POST, PUT, PATCH, DELETE)
+        # GET requests are safe and don't need CSRF protection
+        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            # Skip CSRF check for certain safe endpoints
+            safe_paths = ['/auth/logout/', '/auth/refresh/']
+            if request.path not in safe_paths:
+                try:
+                    enforce_csrf(request)
+                except exceptions.PermissionDenied:
+                    # In development, be more lenient with CSRF
+                    if not settings.DEBUG:
+                        raise
+                    # Log the CSRF issue but don't block in development
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"CSRF check failed for {request.path} - allowing in development mode")
             
         return self.get_user(validated_token), validated_token

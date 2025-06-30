@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from .views import CarbonEstablishmentSummaryViewSet, CarbonProductionSummaryViewSet, PublicProductionViewSet, CarbonOffsetViewSet, CarbonProductionViewSet, calculate_event_carbon_impact, AutomationRuleViewSet, BlockchainVerificationViewSet
+from . import views_security_enhanced
 
 router = DefaultRouter()
 # Database-driven Crop Template System
@@ -103,4 +104,18 @@ urlpatterns = [
     path('entries/<int:carbon_entry_id>/verification-status/', views.get_verification_status, name='get_verification_status'),
     path('bulk-verify/', views.bulk_verify_entries, name='bulk_verify_entries'),
     path('methodology-templates/', views.get_methodology_templates, name='get_methodology_templates'),
+    
+    # Enhanced Security Endpoints
+    path('secure/create-carbon-offset/', views_security_enhanced.create_secure_carbon_offset, name='create_secure_carbon_offset'),
+    path('secure/validate-file-upload/', views_security_enhanced.validate_file_upload_security, name='validate_file_upload_security'),
+    path('secure/user-security-status/', views_security_enhanced.get_user_security_status, name='get_user_security_status'),
+    
+    # Photo Evidence Service Endpoints
+    path('evidence/upload/', views.upload_evidence_photo_enhanced, name='upload_evidence_photo_enhanced'),
+    path('evidence/<int:carbon_entry_id>/photos/', views.get_evidence_photos_enhanced, name='get_evidence_photos_enhanced'),
+    path('evidence/validate/', views.validate_photo_evidence, name='validate_photo_evidence'),
+    
+    # Gas Optimization Endpoints
+    path('blockchain/gas-estimate/', views.estimate_gas_costs, name='estimate_gas_costs'),
+    path('blockchain/optimize-transaction/', views.optimize_transaction_gas, name='optimize_transaction_gas'),
 ] 

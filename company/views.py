@@ -508,12 +508,12 @@ class PublicEstablishmentViewSet(viewsets.ViewSet):
             # Remove sensitive fields for public view
             public_fields = [
                 'id', 'name', 'description', 'address', 'city', 'state', 'country',
-                'location', 'latitude', 'longitude', 'facebook', 'instagram',
-                'certifications', 'about', 'main_activities', 'location_highlights',
-                'custom_message', 'images', 'email', 'phone', 'zip_code',
-                'crops_grown', 'sustainability_practices', 'employee_count',
-                'total_acreage', 'year_established', 'establishment_type',
-                'farming_method', 'image'
+                'location', 'latitude', 'longitude', 'certifications', 'about', 
+                'main_activities', 'location_highlights', 'custom_message', 'images', 
+                'email', 'phone', 'zip_code', 'crops_grown', 'sustainability_practices', 
+                'employee_count', 'total_acreage', 'year_established', 'establishment_type',
+                'farming_method', 'image', 'water_sources', 'climate_zone', 'soil_types',
+                'conservation_practices', 'irrigation_methods'
             ]
             
             public_data = {key: data[key] for key in public_fields if key in data}

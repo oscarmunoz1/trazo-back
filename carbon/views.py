@@ -743,53 +743,90 @@ def calculate_event_carbon_impact(request):
                         self.amount = int(amount_match.group(1))
                         self.unit = amount_match.group(2)
                 
-                # Set defaults for chemical events
+                # Set chemical event data (use actual form data)
                 if event_type == 'chemical':
-                    self.type = 'FE'  # Default to fertilizer
+                    self.type = event_data.get('type', 'FE')  # Use actual type from form
+                    self.commercial_name = event_data.get('commercial_name', '')
                     self.concentration = event_data.get('concentration', '10-10-10')
-                    self.volume = str(self.amount or 10) + ' liters'
-                    self.area = '1 hectare'
-                    self.way_of_application = 'broadcast'
+                    self.volume = event_data.get('volume', '10')  # Volume number only
+                    self.volume_unit = event_data.get('volume_unit', 'liters')
+                    self.area = event_data.get('area', '1.0')  # Area number only  
+                    self.area_unit = event_data.get('area_unit', 'hectares')
+                    self.way_of_application = event_data.get('way_of_application', 'broadcast')
+                    self.weather_conditions = event_data.get('weather_conditions', '')
+                    self.soil_moisture = event_data.get('soil_moisture', '')
+                    self.temperature_range = event_data.get('temperature_range', '')
+                    self.wind_speed = event_data.get('wind_speed', '')
+                    self.time_period = event_data.get('time_period', '')
                 
-                # Set defaults for production events
+                # Map production event data (use actual form data, not defaults)
                 elif event_type == 'production':
-                    self.type = 'IR'  # Default to irrigation
-                    self.volume = str(self.amount or self.duration or 100) + ' liters'
-                    self.area = '1 hectare'
-                    self.equipment = 'irrigation_system'
+                    self.type = event_data.get('type', 'IR')  # Use actual type from form
+                    # Map frontend field names to backend field names
+                    duration = event_data.get('duration', '2 hours')
+                    area_covered = event_data.get('area_covered', '1.0 hectares')
+                    equipment_used = event_data.get('equipment_used', 'irrigation_system')
+                    
+                    # Convert duration to volume estimate for irrigation
+                    if 'hour' in duration:
+                        import re
+                        hours = re.findall(r'\d+', duration)
+                        estimated_volume = int(hours[0]) * 50 if hours else 100  # 50L per hour estimate
+                        self.volume = f'{estimated_volume} liters'
+                    else:
+                        self.volume = duration  # Use as-is if not hours
+                    
+                    self.area = area_covered  # Map area_covered to area
+                    self.equipment = equipment_used  # Map equipment_used to equipment
                 
-                # Set defaults for equipment events
+                # Map equipment event data (use actual form data, not defaults)
                 elif event_type == 'equipment':
-                    self.type = 'TR'  # Default to tractor
-                    self.fuel_type = 'diesel'
-                    self.fuel_amount = str(self.amount or self.duration or 5) + ' liters'
-                    self.hours_used = self.duration or 2
-                    self.equipment_type = 'tractor'
+                    self.type = event_data.get('type', 'FC')  # Use actual type from form (FC = Fuel Consumption)
+                    self.fuel_type = event_data.get('fuel_type', 'diesel')
+                    self.fuel_amount = event_data.get('fuel_amount', '5')
+                    self.hours_used = event_data.get('hours_used', '2')
+                    self.equipment_name = event_data.get('equipment_name', 'tractor')
+                    self.area_covered = event_data.get('area_covered', '1 hectare')
+                    self.maintenance_cost = event_data.get('maintenance_cost', '0')
                 
-                # Set defaults for weather events
+                # Map weather event data (use actual form data, not defaults)
                 elif event_type == 'weather':
-                    self.type = 'WE'  # Weather event
-                    self.weather_type = 'rain'
-                    self.impact_level = 'medium'
+                    self.type = event_data.get('type', 'FR')  # Use actual type from form
+                    self.lower_temperature = event_data.get('lower_temperature')
+                    self.highest_temperature = event_data.get('highest_temperature')
+                    self.water_deficit = event_data.get('water_deficit')
+                    self.duration = event_data.get('duration')
+                    self.way_of_protection = event_data.get('way_of_protection', '')
                 
-                # Set defaults for soil management
+                # Map soil management event data (use actual form data, not defaults)
                 elif event_type == 'soil_management':
-                    self.type = 'TI'  # Tillage
-                    self.depth = '15 cm'
-                    self.area = '1 hectare'
-                    self.equipment = 'plow'
+                    self.type = event_data.get('type', 'ST')  # Use actual type from form
+                    self.area = event_data.get('area', '1.0')
+                    self.area_unit = event_data.get('area_unit', 'hectares')
+                    self.soil_ph = event_data.get('soil_ph')
+                    self.organic_matter_percentage = event_data.get('organic_matter_percentage')
+                    self.depth = event_data.get('depth', '15')
+                    self.depth_unit = event_data.get('depth_unit', 'cm')
+                    self.equipment_used = event_data.get('equipment_used', 'plow')
                 
-                # Set defaults for pest management
+                # Map pest management event data (use actual form data, not defaults)
                 elif event_type == 'pest_management':
-                    self.type = 'SC'  # Scouting
-                    self.pest_pressure_level = 'low'
+                    self.type = event_data.get('type', 'SC')  # Use actual type from form
+                    self.pest_pressure_level = event_data.get('pest_pressure_level', 'low')
+                    self.pest_species = event_data.get('pest_species', '')
+                    self.damage_percentage = event_data.get('damage_percentage')
+                    self.beneficial_species = event_data.get('beneficial_species', '')
+                    self.release_quantity = event_data.get('release_quantity')
+                    self.trap_count = event_data.get('trap_count')
                 
-                # Set defaults for business events
+                # Map business event data (use actual form data, not defaults)
                 elif event_type == 'business':
-                    self.type = 'TR'  # Transport
-                    self.distance = '10 km'
-                    self.transport_type = 'truck'
-                    self.revenue_amount = 0
+                    self.type = event_data.get('type', 'HS')  # Use actual type from form
+                    self.revenue_amount = event_data.get('revenue_amount', 0)
+                    self.quantity_sold = event_data.get('quantity_sold', '')
+                    self.buyer_name = event_data.get('buyer_name', '')
+                    self.carbon_credits_earned = event_data.get('carbon_credits_earned', 0)
+                    self.certification_type = event_data.get('certification_type', '')
                 
                 # Mock history/production relationship for crop-specific calculations
                 self.history = None
@@ -820,16 +857,47 @@ def calculate_event_carbon_impact(request):
         elif event_type == 'business':
             calculation_result = calculator.calculate_business_event_impact(mock_event)
         else:  # general or unknown
-            # For general events, provide minimal standard calculation
-            calculation_result = {
-                'co2e': 0.1,
-                'efficiency_score': 50.0,
-                'usda_verified': False,
-                'calculation_method': 'general_event_standard',
-                'recommendations': [],
-                'event_type': event_type,
-                'timestamp': timezone.now().isoformat()
-            }
+            # For general events, calculate based on observation text analysis
+            try:
+                # Try to extract some meaningful data from observation for general events
+                observation = event_data.get('observation', '')
+                name = event_data.get('name', '')
+                
+                # Basic CO2e estimation based on text content
+                base_co2e = 0.1  # Minimal default
+                
+                # Simple keyword-based estimation for general events
+                text_to_analyze = f"{name} {observation}".lower()
+                if any(word in text_to_analyze for word in ['fuel', 'diesel', 'gas', 'transport', 'truck']):
+                    base_co2e = 2.5  # Transport-related
+                elif any(word in text_to_analyze for word in ['electric', 'solar', 'renewable']):
+                    base_co2e = 0.05  # Low carbon activities
+                elif any(word in text_to_analyze for word in ['organic', 'compost', 'mulch']):
+                    base_co2e = -0.5  # Sequestration activities
+                
+                calculation_result = {
+                    'co2e': base_co2e,
+                    'efficiency_score': 60.0,
+                    'usda_verified': False,
+                    'calculation_method': 'general_event_text_analysis',
+                    'recommendations': [
+                        'Consider categorizing this activity into a specific event type for more accurate carbon tracking',
+                        'Add more specific details about resources used for better calculations'
+                    ],
+                    'event_type': event_type,
+                    'timestamp': timezone.now().isoformat()
+                }
+            except Exception:
+                # Fallback if text analysis fails
+                calculation_result = {
+                    'co2e': 0.1,
+                    'efficiency_score': 50.0,
+                    'usda_verified': False,
+                    'calculation_method': 'general_event_fallback',
+                    'recommendations': [],
+                    'event_type': event_type,
+                    'timestamp': timezone.now().isoformat()
+                }
         
         # Ensure required fields are present
         calculation_result['event_type'] = event_type
@@ -919,8 +987,49 @@ class CarbonFootprintCalculatorViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def calculate(self, request):
-        """Calculate carbon footprint"""
-        return Response({'co2e': 0.1}, status=status.HTTP_200_OK)
+        """Calculate carbon footprint using real calculator service"""
+        try:
+            from .services.event_carbon_calculator import EventCarbonCalculator
+            
+            event_type = request.data.get('event_type', 'general')
+            event_data = request.data.get('event_data', {})
+            
+            # Create calculator instance
+            calculator = EventCarbonCalculator()
+            
+            # Create a mock event for calculation
+            class MockEvent:
+                def __init__(self, data):
+                    for key, value in data.items():
+                        setattr(self, key, value)
+                    self.history = None
+                    self.date = timezone.now()
+            
+            mock_event = MockEvent(event_data)
+            
+            # Route to appropriate calculation method
+            if event_type == 'chemical':
+                result = calculator.calculate_chemical_event_impact(mock_event)
+            elif event_type == 'production':
+                result = calculator.calculate_production_event_impact(mock_event)
+            elif event_type == 'equipment':
+                result = calculator.calculate_equipment_event_impact(mock_event)
+            else:
+                result = {
+                    'co2e': 0.1,
+                    'efficiency_score': 50.0,
+                    'calculation_method': 'general_estimation'
+                }
+            
+            return Response(result, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Calculator error: {str(e)}")
+            return Response({
+                'error': 'Calculation failed',
+                'co2e': 0.0,
+                'efficiency_score': 50.0
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Placeholder ViewSets for missing ones referenced in URLs
@@ -1684,8 +1793,6 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 'contact_phone': getattr(establishment, 'contact_phone', ''),
                 'contact_email': getattr(establishment, 'contact_email', ''),
                 'zip_code': getattr(establishment, 'zip_code', ''),
-                'facebook': getattr(establishment, 'facebook', ''),
-                'instagram': getattr(establishment, 'instagram', ''),
                 'about': getattr(establishment, 'about', ''),
                 'main_activities': getattr(establishment, 'main_activities', ''),
                 'location_highlights': getattr(establishment, 'location_highlights', ''),
@@ -1698,6 +1805,12 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 'year_established': getattr(establishment, 'year_established', None),
                 'establishment_type': getattr(establishment, 'establishment_type', ''),
                 'farming_method': getattr(establishment, 'farming_method', ''),
+                # New operational agricultural fields
+                'water_sources': getattr(establishment, 'water_sources', []),
+                'climate_zone': getattr(establishment, 'climate_zone', ''),
+                'soil_types': getattr(establishment, 'soil_types', []),
+                'conservation_practices': getattr(establishment, 'conservation_practices', []),
+                'irrigation_methods': getattr(establishment, 'irrigation_methods', []),
                 # Company information (from establishment's company)
                 'company': {
                     'id': establishment.company.id if establishment.company else None,
@@ -1712,6 +1825,10 @@ class PublicProductionViewSet(viewsets.ViewSet):
                     'website': getattr(establishment.company, 'website', '') if establishment.company else '',
                     'facebook': getattr(establishment.company, 'facebook', '') if establishment.company else '',
                     'instagram': getattr(establishment.company, 'instagram', '') if establishment.company else '',
+                    # New agricultural compliance fields
+                    'legal_structure': getattr(establishment.company, 'legal_structure', '') if establishment.company else '',
+                    'primary_commodities': getattr(establishment.company, 'primary_commodities', '') if establishment.company else '',
+                    'sustainability_commitment': getattr(establishment.company, 'sustainability_commitment', '') if establishment.company else '',
                     'logo': self._get_safe_image_url(establishment.company.logo) if establishment.company and establishment.company.logo else None,
                     'fiscal_id': getattr(establishment.company, 'fiscal_id', '') if establishment.company else '',
                     'contact_email': getattr(establishment.company, 'contact_email', '') if establishment.company else '',
@@ -2294,7 +2411,7 @@ class PublicProductionViewSet(viewsets.ViewSet):
             return 0.0
 
     def _get_complete_timeline(self, production):
-        """Get complete timeline data from all event types"""
+        """Get complete timeline data from all event types with carbon calculations"""
         try:
             timeline_events = []
             
@@ -2303,6 +2420,7 @@ class PublicProductionViewSet(viewsets.ViewSet):
                 WeatherEvent, ProductionEvent, ChemicalEvent, 
                 GeneralEvent, EquipmentEvent, SoilManagementEvent, PestManagementEvent
             )
+            from .models import CarbonEntry
             
             event_types = [
                 (production.history_weatherevent_events.all(), 'weather'),
@@ -2316,7 +2434,8 @@ class PublicProductionViewSet(viewsets.ViewSet):
             
             for events, event_category in event_types:
                 for event in events:
-                    timeline_events.append({
+                    # Build basic event data
+                    event_data = {
                         'id': event.id,
                         'type': event_category,
                         'description': getattr(event, 'description', '') or getattr(event, 'name', ''),
@@ -2328,7 +2447,14 @@ class PublicProductionViewSet(viewsets.ViewSet):
                         'concentration': getattr(event, 'concentration', None),
                         'area': getattr(event, 'area', None),
                         'equipment': getattr(event, 'commercial_name', None) or getattr(event, 'equipment', None)
-                    })
+                    }
+                    
+                    # Add carbon calculation data if available
+                    carbon_data = self._get_event_carbon_data(event, event_category, production)
+                    if carbon_data:
+                        event_data['carbon_data'] = carbon_data
+                    
+                    timeline_events.append(event_data)
             
             # Sort by date
             timeline_events.sort(key=lambda x: x['date'] or '1900-01-01')
@@ -2337,6 +2463,100 @@ class PublicProductionViewSet(viewsets.ViewSet):
         except Exception as e:
             print(f"Error getting timeline: {e}")
             return []
+
+    def _get_event_carbon_data(self, event, event_category, production):
+        """Get carbon calculation data for a specific event"""
+        try:
+            from .models import CarbonEntry
+            
+            # First, try to get from event's extra_data field (stored during event creation)
+            if hasattr(event, 'extra_data') and event.extra_data:
+                carbon_calc = event.extra_data.get('carbon_calculation')
+                if carbon_calc:
+                    return {
+                        'co2e': float(carbon_calc.get('co2e', 0)),
+                        'efficiency_score': float(carbon_calc.get('efficiency_score', 0)),
+                        'usda_verified': carbon_calc.get('usda_factors_based', False),
+                        'calculation_method': carbon_calc.get('calculation_method', 'USDA Agricultural Emission Factors'),
+                        'verification_confidence': carbon_calc.get('confidence_level', 'medium'),
+                        'cost_analysis': carbon_calc.get('cost_analysis') if carbon_calc.get('cost_analysis') else None
+                    }
+            
+            # Second, try to find related CarbonEntry records
+            carbon_entries = CarbonEntry.objects.filter(
+                production=production,
+                extra_data__event_id=event.id
+            ).order_by('-created_at')
+            
+            if carbon_entries.exists():
+                carbon_entry = carbon_entries.first()
+                extra_data = carbon_entry.extra_data or {}
+                
+                return {
+                    'co2e': float(carbon_entry.amount),
+                    'efficiency_score': float(extra_data.get('efficiency_score', 75)),
+                    'usda_verified': carbon_entry.usda_factors_based,
+                    'calculation_method': carbon_entry.data_source or 'USDA Agricultural Emission Factors',
+                    'verification_confidence': extra_data.get('confidence_level', 'high'),
+                    'cost_analysis': extra_data.get('cost_analysis') if extra_data.get('cost_analysis') else None
+                }
+            
+            # Third, try to calculate on-the-fly for events without stored calculations
+            return self._calculate_event_carbon_on_demand(event, event_category, production)
+            
+        except Exception as e:
+            print(f"Error getting carbon data for event {event.id}: {e}")
+            return None
+
+    def _calculate_event_carbon_on_demand(self, event, event_category, production):
+        """Calculate carbon impact on-demand for events that don't have stored calculations"""
+        try:
+            from .services.event_carbon_calculator import EventCarbonCalculator
+            
+            calculator = EventCarbonCalculator()
+            
+            # Prepare event data for calculation
+            event_data = {
+                'type': event_category,
+                'date': event.date.isoformat() if event.date else None,
+                'volume': getattr(event, 'volume', None),
+                'concentration': getattr(event, 'concentration', None),
+                'area': getattr(event, 'area', None),
+                'equipment': getattr(event, 'commercial_name', None) or getattr(event, 'equipment', None),
+                'description': getattr(event, 'description', '') or getattr(event, 'name', ''),
+                'observation': getattr(event, 'observation', ''),
+                'parcel_id': production.parcel.id if production.parcel else None,
+                'establishment_id': production.parcel.establishment.id if production.parcel and production.parcel.establishment else None
+            }
+            
+            # Calculate based on event category
+            result = None
+            if event_category == 'chemical':
+                result = calculator.calculate_chemical_impact(event_data)
+            elif event_category == 'production':
+                result = calculator.calculate_production_impact(event_data)
+            elif event_category == 'equipment':
+                result = calculator.calculate_equipment_impact(event_data)
+            elif event_category == 'soil_management':
+                result = calculator.calculate_soil_management_impact(event_data)
+            elif event_category == 'pest_management':
+                result = calculator.calculate_pest_management_impact(event_data)
+            
+            if result:
+                return {
+                    'co2e': float(result.get('co2e', 0)),
+                    'efficiency_score': float(result.get('efficiency_score', 70)),
+                    'usda_verified': result.get('usda_verified', False),
+                    'calculation_method': result.get('calculation_method', 'USDA Agricultural Emission Factors'),
+                    'verification_confidence': 'medium',  # On-demand calculations have medium confidence
+                    'cost_analysis': result.get('cost_analysis') if result.get('cost_analysis') else None
+                }
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error calculating carbon on-demand for event {event.id}: {e}")
+            return None
 
     def _get_blockchain_verification(self, production):
         """Get blockchain verification status"""
@@ -6907,3 +7127,223 @@ def get_methodology_templates(request):
             'error': 'Failed to get methodology templates',
             'details': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Enhanced Photo Evidence Service Endpoints
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@method_decorator(ratelimit(key='user', rate='20/m', method='POST', block=True))
+def upload_evidence_photo_enhanced(request):
+    """
+    Enhanced photo evidence upload with comprehensive validation and processing
+    
+    POST /carbon/evidence/upload/
+    """
+    try:
+        from .services.photo_evidence_service import PhotoEvidenceService
+        
+        photo_service = PhotoEvidenceService()
+        
+        carbon_entry_id = request.data.get('carbon_entry_id')
+        photo_file = request.FILES.get('photo')
+        
+        if not carbon_entry_id or not photo_file:
+            return Response({
+                'error': 'carbon_entry_id and photo file are required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get carbon entry and verify permissions
+        carbon_entry = get_object_or_404(CarbonEntry, id=carbon_entry_id)
+        
+        # Check if user has permission to upload evidence
+        if (carbon_entry.created_by != request.user and 
+            not carbon_entry.establishment.company.users.filter(id=request.user.id).exists()):
+            return Response({
+                'error': 'Permission denied'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Process photo upload
+        result = photo_service.upload_evidence_photo(
+            carbon_entry=carbon_entry,
+            photo_file=photo_file,
+            uploaded_by=request.user,
+            description=request.data.get('description', ''),
+            metadata=request.data.get('metadata', {})
+        )
+        
+        return Response({
+            'success': True,
+            'photo_id': result['photo_id'],
+            'photo_url': result['photo_url'],
+            'metadata': result['metadata'],
+            'validation_status': result['validation_status'],
+            'message': 'Photo evidence uploaded successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        logger.error(f"Enhanced photo upload error: {e}")
+        return Response({
+            'error': 'Photo upload failed',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_evidence_photos_enhanced(request, carbon_entry_id):
+    """
+    Enhanced photo evidence retrieval with metadata and validation status
+    
+    GET /carbon/evidence/<carbon_entry_id>/photos/
+    """
+    try:
+        from .services.photo_evidence_service import PhotoEvidenceService
+        
+        photo_service = PhotoEvidenceService()
+        
+        # Get carbon entry and verify permissions
+        carbon_entry = get_object_or_404(CarbonEntry, id=carbon_entry_id)
+        
+        # Check permissions
+        if (carbon_entry.created_by != request.user and 
+            not carbon_entry.establishment.company.users.filter(id=request.user.id).exists()):
+            return Response({
+                'error': 'Permission denied'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get photo evidence
+        photos = photo_service.get_evidence_photos(carbon_entry)
+        
+        return Response({
+            'photos': photos,
+            'total_count': len(photos),
+            'validation_summary': photo_service.get_validation_summary(carbon_entry),
+            'message': f'Retrieved {len(photos)} evidence photos'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Enhanced photo retrieval error: {e}")
+        return Response({
+            'error': 'Photo retrieval failed',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def validate_photo_evidence(request):
+    """
+    Validate photo evidence for carbon entry
+    
+    POST /carbon/evidence/validate/
+    """
+    try:
+        from .services.photo_evidence_service import PhotoEvidenceService
+        
+        photo_service = PhotoEvidenceService()
+        
+        carbon_entry_id = request.data.get('carbon_entry_id')
+        if not carbon_entry_id:
+            return Response({
+                'error': 'carbon_entry_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        carbon_entry = get_object_or_404(CarbonEntry, id=carbon_entry_id)
+        
+        # Validate all evidence photos
+        validation_result = photo_service.validate_all_evidence(carbon_entry)
+        
+        return Response({
+            'validation_result': validation_result,
+            'is_valid': validation_result['overall_valid'],
+            'message': 'Photo evidence validation completed'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Photo validation error: {e}")
+        return Response({
+            'error': 'Photo validation failed',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Gas Optimization Endpoints
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def estimate_gas_costs(request):
+    """
+    Estimate gas costs for blockchain operations
+    
+    POST /carbon/blockchain/gas-estimate/
+    """
+    try:
+        from .services.gas_optimized_blockchain import GasOptimizedBlockchainService
+        
+        gas_service = GasOptimizedBlockchainService()
+        
+        operation_type = request.data.get('operation_type')
+        operation_data = request.data.get('operation_data', {})
+        
+        if not operation_type:
+            return Response({
+                'error': 'operation_type is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Estimate gas costs
+        estimation = gas_service.estimate_gas_costs(operation_type, operation_data)
+        
+        return Response({
+            'gas_estimation': estimation,
+            'recommended_strategy': gas_service.get_recommended_gas_strategy(),
+            'current_gas_prices': gas_service.get_current_gas_prices(),
+            'message': 'Gas estimation completed'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Gas estimation error: {e}")
+        return Response({
+            'error': 'Gas estimation failed',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def optimize_transaction_gas(request):
+    """
+    Optimize transaction gas usage
+    
+    POST /carbon/blockchain/optimize-transaction/
+    """
+    try:
+        from .services.gas_optimized_blockchain import GasOptimizedBlockchainService
+        
+        gas_service = GasOptimizedBlockchainService()
+        
+        transactions = request.data.get('transactions', [])
+        strategy = request.data.get('strategy', 'STANDARD')
+        
+        if not transactions:
+            return Response({
+                'error': 'transactions array is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Optimize transactions
+        optimization_result = gas_service.optimize_transactions(transactions, strategy)
+        
+        return Response({
+            'optimization_result': optimization_result,
+            'gas_savings': optimization_result.get('estimated_savings', 0),
+            'optimized_transactions': optimization_result.get('optimized_transactions', []),
+            'message': 'Transaction optimization completed'
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Transaction optimization error: {e}")
+        return Response({
+            'error': 'Transaction optimization failed',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

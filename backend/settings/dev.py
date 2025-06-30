@@ -32,10 +32,9 @@ CORS_ALLOWED_ORIGINS = [
     "https://7172-167-60-250-132.ngrok-free.app",
 ]
 
-CSRF_COOKIE_DOMAIN = "localhost"
-
-
-CSRF_COOKIE_SECURE = True
+# Fix for development - allow cross-subdomain cookies and HTTP
+CSRF_COOKIE_DOMAIN = None  # Allow cookies to work across app.localhost and localhost
+CSRF_COOKIE_SECURE = False  # Allow HTTP in development
 
 # Email configuration for development
 # Use console backend to print emails to terminal instead of sending them

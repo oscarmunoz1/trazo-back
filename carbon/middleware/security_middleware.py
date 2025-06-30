@@ -103,25 +103,14 @@ class CarbonSecurityMiddleware(MiddlewareMixin):
     def _validate_critical_request(self, request) -> JsonResponse:
         """Validate critical requests for security compliance"""
         
-        # Check for required security headers in production
-        if not settings.DEBUG:
-            csrf_token = request.META.get('HTTP_X_CSRFTOKEN') or request.POST.get('csrfmiddlewaretoken')
-            if not csrf_token:
-                logger.warning(f"Missing CSRF token for critical request: {request.path}")
-                return JsonResponse({
-                    'error': 'Security validation failed',
-                    'message': 'CSRF protection required',
-                    'code': 'CSRF_MISSING'
-                }, status=403)
-            
-            # Validate X-Requested-With header for AJAX requests
-            if not request.META.get('HTTP_X_REQUESTED_WITH'):
-                logger.warning(f"Missing X-Requested-With header: {request.path}")
-                return JsonResponse({
-                    'error': 'Security validation failed',
-                    'message': 'Invalid request origin',
-                    'code': 'INVALID_ORIGIN'
-                }, status=403)
+        # Skip CSRF checks for API endpoints - let Django's middleware handle it
+        # Our middleware focuses on rate limiting and suspicious activity detection
+        
+        # Validate X-Requested-With header for AJAX requests (only in production)
+        if not settings.DEBUG and not request.META.get('HTTP_X_REQUESTED_WITH'):
+            logger.warning(f"Missing X-Requested-With header: {request.path}")
+            # Don't block requests lacking this header, just log as warning
+            # Modern SPAs may not always send this header
         
         # Validate user authentication for critical operations
         if not request.user or not request.user.is_authenticated:

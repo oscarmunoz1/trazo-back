@@ -5,7 +5,8 @@ from ..models import (
     CarbonOffsetProject,
     CarbonOffsetPurchase,
     CarbonOffsetCertificate,
-    CarbonAuditLog
+    CarbonAuditLog,
+    CarbonEntry
 )
 from .blockchain import blockchain_service, BlockchainUnavailableError
 import logging
@@ -115,7 +116,7 @@ class CarbonOffsetVerificationService:
             
             # Log verification
             CarbonAuditLog.objects.create(
-                purchase=purchase,
+                user=purchase.user,
                 action='verify',
                 details=f'Purchase verification completed with status: {verification_results["status"]}'
             )
@@ -124,6 +125,58 @@ class CarbonOffsetVerificationService:
             
         except Exception as e:
             logger.error(f"Error verifying purchase {purchase.id}: {str(e)}")
+            raise
+
+    def verify_carbon_entry(self, carbon_entry: CarbonEntry) -> Dict[str, Any]:
+        """
+        Verify a carbon entry (offset)
+        
+        Args:
+            carbon_entry: CarbonEntry instance to verify
+            
+        Returns:
+            Dictionary containing verification results
+        """
+        try:
+            verification_results = {
+                'entry_id': carbon_entry.id,
+                'verification_date': timezone.now(),
+                'status': 'pending',
+                'checks': {}
+            }
+            
+            # Verify entry amount
+            verification_results['checks']['amount'] = self._verify_entry_amount(carbon_entry)
+            
+            # Verify entry completeness
+            verification_results['checks']['completeness'] = self._verify_entry_completeness(carbon_entry)
+            
+            # Verify documentation
+            verification_results['checks']['documentation'] = self._verify_entry_documentation(carbon_entry)
+            
+            # BLOCKCHAIN VERIFICATION for entry
+            verification_results['checks']['blockchain'] = self._verify_entry_blockchain(carbon_entry)
+            
+            # Determine overall status
+            all_checks_passed = all(check['passed'] for check in verification_results['checks'].values())
+            verification_results['status'] = 'verified' if all_checks_passed else 'failed'
+            
+            # Update entry verification status
+            carbon_entry.verification_status = verification_results['status']
+            carbon_entry.save()
+            
+            # Log verification
+            CarbonAuditLog.objects.create(
+                carbon_entry=carbon_entry,
+                user=carbon_entry.created_by,
+                action='verify',
+                details=f'Carbon entry verification completed with status: {verification_results["status"]}'
+            )
+            
+            return verification_results
+            
+        except Exception as e:
+            logger.error(f"Error verifying carbon entry {carbon_entry.id}: {str(e)}")
             raise
 
     def _verify_certification(self, project: CarbonOffsetProject) -> Dict[str, Any]:
@@ -293,6 +346,101 @@ class CarbonOffsetVerificationService:
         except Exception as e:
             logger.error(f"Error in purchase blockchain verification: {str(e)}")
             return {'passed': False, 'details': str(e)}
+
+    def _verify_entry_amount(self, carbon_entry: CarbonEntry) -> Dict[str, Any]:
+        """Verify carbon entry amount"""
+        try:
+            is_valid = carbon_entry.amount > 0
+            
+            return {
+                'passed': is_valid,
+                'details': 'Entry amount is valid' if is_valid else 'Invalid entry amount'
+            }
+        except Exception as e:
+            logger.error(f"Error verifying entry amount: {str(e)}")
+            return {'passed': False, 'details': str(e)}
+
+    def _verify_entry_completeness(self, carbon_entry: CarbonEntry) -> Dict[str, Any]:
+        """Verify carbon entry completeness"""
+        try:
+            is_valid = (
+                carbon_entry.source is not None and
+                carbon_entry.amount is not None and
+                carbon_entry.year is not None
+            )
+            
+            return {
+                'passed': is_valid,
+                'details': 'Entry is complete' if is_valid else 'Entry is missing required data'
+            }
+        except Exception as e:
+            logger.error(f"Error verifying entry completeness: {str(e)}")
+            return {'passed': False, 'details': str(e)}
+
+    def _verify_entry_documentation(self, carbon_entry: CarbonEntry) -> Dict[str, Any]:
+        """Verify carbon entry documentation"""
+        try:
+            # For high-value offsets, require additional evidence
+            requires_evidence = carbon_entry.amount >= 100
+            has_evidence = bool(carbon_entry.additionality_evidence)
+            
+            if requires_evidence and not has_evidence:
+                return {
+                    'passed': False,
+                    'details': 'High-value offsets require additionality evidence'
+                }
+            
+            return {
+                'passed': True,
+                'details': 'Documentation requirements met'
+            }
+        except Exception as e:
+            logger.error(f"Error verifying entry documentation: {str(e)}")
+            return {'passed': False, 'details': str(e)}
+
+    def _verify_entry_blockchain(self, carbon_entry: CarbonEntry) -> Dict[str, Any]:
+        """Verify carbon entry blockchain verification"""
+        try:
+            # Check if blockchain verification is available and working
+            if self.blockchain_required:
+                try:
+                    # Attempt to verify blockchain connectivity
+                    blockchain_status = blockchain_service._is_blockchain_ready()
+                    if not blockchain_status:
+                        return {
+                            'passed': False,
+                            'details': 'Blockchain verification required but service unavailable'
+                        }
+                    
+                    # Verify entry has blockchain record
+                    verification_result = blockchain_service.verify_carbon_record(carbon_entry.id)
+                    blockchain_verified = verification_result.get('blockchain_verified', False)
+                    
+                    return {
+                        'passed': blockchain_verified,
+                        'details': 'Entry verified on blockchain' if blockchain_verified else 'Entry not verified on blockchain',
+                        'blockchain_data': verification_result
+                    }
+                except BlockchainUnavailableError:
+                    return {
+                        'passed': False,
+                        'details': 'Blockchain verification required but unavailable'
+                    }
+            else:
+                # Development mode - log but allow
+                logger.warning(f"Blockchain verification skipped for carbon entry {carbon_entry.id} (development mode)")
+                return {
+                    'passed': True,
+                    'details': 'Blockchain verification skipped (development mode)',
+                    'development_mode': True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in entry blockchain verification: {str(e)}")
+            if self.blockchain_required:
+                return {'passed': False, 'details': f'Blockchain verification failed: {str(e)}'}
+            else:
+                return {'passed': True, 'details': f'Blockchain verification error (allowed in dev): {str(e)}'}
 
 # Create a singleton instance
 verification_service = CarbonOffsetVerificationService() 

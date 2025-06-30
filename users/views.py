@@ -126,7 +126,8 @@ class UserViewSet(viewsets.ModelViewSet):
 
 class LoginViewSet(viewsets.ModelViewSet, TokenObtainPairView):
     serializer_class = LoginSerializer
-    permission_classes = (AllowAny,)
+    permission_classes = [AllowAny]  # Explicitly allow anonymous access
+    authentication_classes = []     # No authentication required for login
     http_method_names = ["post"]
 
     def get_subdomain(self, request):
@@ -181,20 +182,23 @@ class LoginViewSet(viewsets.ModelViewSet, TokenObtainPairView):
             'secure': settings.SIMPLE_JWT['AUTH_COOKIE_SECURE'],
             'httponly': settings.SIMPLE_JWT['AUTH_COOKIE_HTTP_ONLY'],
             'samesite': settings.SIMPLE_JWT['AUTH_COOKIE_SAMESITE'],
-            'domain': settings.CSRF_COOKIE_DOMAIN
         }
+        
+        # Only set domain in production, not in development (localhost)
+        if not settings.DEBUG and hasattr(settings, 'CSRF_COOKIE_DOMAIN') and settings.CSRF_COOKIE_DOMAIN:
+            cookie_options['domain'] = settings.CSRF_COOKIE_DOMAIN
 
         # Set cookies with improved security
         response.set_cookie(
             key="access",
             value=serializer.validated_data["access"],
-            expires=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
+            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
             **cookie_options
         )
         response.set_cookie(
             key="refresh",
             value=serializer.validated_data["refresh"],
-            expires=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"],
+            max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
             **cookie_options
         )
         
@@ -239,29 +243,39 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({"error": str(e)}, status=400)
 
         response = Response(serializer.validated_data, status=status.HTTP_200_OK)
+        
+        # Set secure cookie options (same as login)
+        cookie_options = {
+            'secure': settings.SIMPLE_JWT['AUTH_COOKIE_SECURE'],
+            'httponly': settings.SIMPLE_JWT['AUTH_COOKIE_HTTP_ONLY'],
+            'samesite': settings.SIMPLE_JWT['AUTH_COOKIE_SAMESITE'],
+        }
+        
+        # Only set domain in production, not in development (localhost)
+        if not settings.DEBUG and hasattr(settings, 'CSRF_COOKIE_DOMAIN') and settings.CSRF_COOKIE_DOMAIN:
+            cookie_options['domain'] = settings.CSRF_COOKIE_DOMAIN
+        
         response.set_cookie(
             key="access",
             value=serializer.validated_data["access"],
-            expires=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
-            secure=settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
-            httponly=settings.SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
-            samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            **cookie_options
         )
         response.set_cookie(
             key="refresh",
             value=serializer.validated_data["refresh"],
-            expires=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
-            secure=settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
-            httponly=settings.SIMPLE_JWT["AUTH_COOKIE_HTTP_ONLY"],
-            samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+            max_age=settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds(),
+            **cookie_options
         )
+        # Special cookie options for logged_in (not httponly)
+        logged_in_options = cookie_options.copy()
+        logged_in_options['httponly'] = False
+        
         response.set_cookie(
             key="logged_in",
             value=True,
-            expires=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"],
-            secure=settings.SIMPLE_JWT["AUTH_COOKIE_SECURE"],
-            httponly=False,
-            samesite=settings.SIMPLE_JWT["AUTH_COOKIE_SAMESITE"],
+            max_age=settings.SIMPLE_JWT["ACCESS_TOKEN_LIFETIME"].total_seconds(),
+            **logged_in_options
         )
         csrf.get_token(request)
         return response

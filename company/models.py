@@ -29,6 +29,11 @@ class Company(models.Model):
     industry = models.CharField(max_length=100, blank=True, null=True, help_text="Primary agricultural industry")
     is_active = models.BooleanField(default=True, help_text="Whether the company is active")
     
+    # New agricultural compliance fields
+    legal_structure = models.CharField(max_length=50, blank=True, null=True, help_text="Business legal structure")
+    primary_commodities = models.CharField(max_length=100, blank=True, null=True, help_text="Main agricultural commodities")
+    sustainability_commitment = models.CharField(max_length=100, blank=True, null=True, help_text="Sustainability approach")
+    
     # Sustainability and carbon tracking metadata
     sustainability_metadata = models.JSONField(
         blank=True, 
@@ -199,8 +204,6 @@ class Establishment(models.Model):
     contact_person = models.CharField(max_length=100, blank=True, null=True, help_text="Contact person name")
     contact_phone = models.CharField(max_length=20, blank=True, null=True, help_text="Contact phone number")
     contact_email = models.EmailField(max_length=254, blank=True, null=True)
-    facebook = models.URLField(max_length=200, blank=True, null=True)
-    instagram = models.URLField(max_length=200, blank=True, null=True)
     certifications = models.TextField(blank=True, null=True)
     about = models.TextField(blank=True, null=True)
     main_activities = models.TextField(blank=True, null=True)
@@ -219,6 +222,13 @@ class Establishment(models.Model):
     year_established = models.PositiveIntegerField(blank=True, null=True, help_text="Year the establishment was founded")
     establishment_type = models.CharField(max_length=50, blank=True, null=True, help_text="Type of agricultural operation")
     farming_method = models.CharField(max_length=50, blank=True, null=True, help_text="Primary farming approach")
+    
+    # Operational agricultural fields
+    water_sources = models.JSONField(default=list, blank=True, help_text="Primary water sources (well, surface water, irrigation district, etc.)")
+    climate_zone = models.CharField(max_length=50, blank=True, null=True, help_text="Climate zone or growing region classification")
+    soil_types = models.JSONField(default=list, blank=True, help_text="Primary soil types present on the establishment")
+    conservation_practices = models.JSONField(default=list, blank=True, help_text="Conservation practices implemented (cover crops, buffer strips, etc.)")
+    irrigation_methods = models.JSONField(default=list, blank=True, help_text="Irrigation methods used (drip, sprinkler, flood, etc.)")
 
     class Meta:
         verbose_name = _("Establishment")

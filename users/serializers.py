@@ -4,7 +4,7 @@ from rest_framework_simplejwt.settings import api_settings
 from django.contrib.auth.models import update_last_login
 from django.core.exceptions import ObjectDoesNotExist
 from .models import User, WorksIn
-from .constants import PRODUCER
+from .constants import PRODUCER, USER_TYPE_CHOICES
 
 
 class WorksInSerializer(serializers.ModelSerializer):
@@ -124,6 +124,19 @@ class RegisterSerializer(BasicUserSerializer):
         ]
 
     def create(self, validated_data):
+        # Convert user_type string to integer if needed
+        user_type = validated_data.get('user_type')
+        if isinstance(user_type, str):
+            # Create a mapping from string values to integer values
+            user_type_mapping = {
+                'SUPERUSER': 1,
+                'STAFF': 2, 
+                'CONSUMER': 3,
+                'PRODUCER': 4,
+                'CERTIFIER': 5
+            }
+            validated_data['user_type'] = user_type_mapping.get(user_type.upper(), 3)  # Default to CONSUMER if not found
+        
         try:
             user = User.objects.get(email=validated_data["email"])
         except ObjectDoesNotExist:

@@ -1,3 +1,11 @@
+# Production Settings Override
+DEBUG = False  # Explicitly disable debug in production
+
+# Validate SECRET_KEY for production
+SECRET_KEY = config('SECRET_KEY')
+if not SECRET_KEY or len(SECRET_KEY) < 50:
+    raise ValueError("Production requires a strong SECRET_KEY with at least 50 characters")
+
 import os
 
 from backend.settings.base import *

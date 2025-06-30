@@ -43,7 +43,6 @@ def get_client_ip(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
-@method_decorator(csrf_protect)
 @ratelimit(key='user', rate='10/m', method='POST', block=True)
 def create_secure_carbon_offset(request):
     """
@@ -234,8 +233,8 @@ def create_secure_carbon_offset(request):
             carbon_entry.save()
         
         # Enhanced verification check with blockchain integration
-        verification_result_detailed = verification_service.verify_purchase(
-            carbon_entry  # This will be adapted to work with CarbonEntry
+        verification_result_detailed = verification_service.verify_carbon_entry(
+            carbon_entry  # Now uses the correct method for CarbonEntry
         )
         
         # Handle blockchain verification if required
@@ -451,6 +450,24 @@ def get_user_security_status(request):
         # Get user trust history
         trust_history = backend_security_validator._get_user_trust_history(user)
         
+        # Calculate overall trust score using the same logic as offset validation
+        # but without specific offset data
+        base_score = 0.5  # Default for self-reported level
+        
+        # Adjust based on user history
+        history_adjustment = 0
+        if trust_history['total_verified_offsets'] > 10:
+            history_adjustment += 0.1
+        if trust_history['audit_pass_rate'] > 0.9:
+            history_adjustment += 0.1
+        if trust_history['gaming_violations'] == 0:
+            history_adjustment += 0.05
+        else:
+            history_adjustment -= 0.1 * trust_history['gaming_violations']
+        
+        # Calculate overall trust score (without current submission adjustments)
+        overall_trust_score = max(0.1, min(1.0, base_score + history_adjustment))
+        
         # Get recent security events
         recent_violations = CarbonAuditLog.objects.filter(
             user=user,
@@ -469,6 +486,13 @@ def get_user_security_status(request):
                 'recent_violations': recent_violations,
                 'account_standing': 'good' if recent_violations == 0 else 'flagged'
             },
+            'overall_trust_score': overall_trust_score,
+            'gaming_detection': {
+                'risk_level': 'low' if recent_violations == 0 else 'high',
+                'recent_violations': recent_violations,
+                'gaming_score': min(recent_violations * 0.2, 1.0),  # 0-1 scale
+                'last_violation': None  # Could add timestamp if needed
+            },
             'rate_limits': {
                 'rapid_submissions_remaining': max(0, 
                     backend_security_validator.SECURITY_LIMITS['MAX_RAPID_SUBMISSIONS'] - rapid_count
@@ -478,6 +502,13 @@ def get_user_security_status(request):
                 ),
                 'daily_self_reported_limit': backend_security_validator.SECURITY_LIMITS['MAX_DAILY_SELF_REPORTED']
             },
+            'security_flags': [
+                {
+                    'type': 'account_flagged',
+                    'severity': 'high',
+                    'message': 'Account flagged due to recent gaming violations'
+                }
+            ] if recent_violations > 0 else [],
             'verification_recommendations': [],
             'security_features': {
                 'csrf_protection': True,
@@ -488,16 +519,35 @@ def get_user_security_status(request):
             }
         }
         
-        # Add personalized recommendations
+        # Add personalized recommendations based on trust score and metrics
+        recommendations = []
+        
+        if overall_trust_score < 0.6:
+            recommendations.append('Focus on improving your overall trust score to access more features')
+        
         if trust_history['total_verified_offsets'] < 5:
-            security_status['verification_recommendations'].append(
-                'Consider using certified projects to build trust score'
-            )
+            recommendations.append('Consider using certified projects to build trust score')
+        elif trust_history['total_verified_offsets'] < 10:
+            recommendations.append('Continue building trust with more verified offset projects')
         
         if trust_history['audit_pass_rate'] < 0.8:
-            security_status['verification_recommendations'].append(
-                'Improve audit pass rate by providing better documentation'
-            )
+            recommendations.append('Improve audit pass rate by providing better documentation')
+        elif trust_history['audit_pass_rate'] < 0.9:
+            recommendations.append('Enhance documentation quality to achieve excellent audit rates')
+        
+        if recent_violations > 0:
+            recommendations.append('Address recent violations to restore account standing')
+            recommendations.append('Follow platform guidelines to avoid future flagging')
+        
+        if overall_trust_score >= 0.8:
+            recommendations.append('Excellent trust score! You have access to all platform features')
+        
+        # Add recommendations for improving trust score
+        if overall_trust_score < 0.8:
+            recommendations.append('Add evidence photos and documents to increase trust')
+            recommendations.append('Participate in community verification to build credibility')
+        
+        security_status['verification_recommendations'] = recommendations
         
         return Response(security_status, status=status.HTTP_200_OK)
         
@@ -509,4 +559,4 @@ def get_user_security_status(request):
 
 
 import json
-from django.core import cache
+from django.core.cache import cache

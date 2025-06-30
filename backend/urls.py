@@ -17,12 +17,29 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.middleware.csrf import get_token
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.http import JsonResponse
 from common.views import health_check
 
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    """
+    Global CSRF token endpoint.
+    
+    This endpoint ensures the CSRF cookie is set and returns the token
+    for use in AJAX requests across the entire application.
+    """
+    return JsonResponse({
+        'csrf_token': get_token(request),
+        'message': 'CSRF token set successfully'
+    })
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
+    # Global CSRF token endpoint
+    path("api/csrf-token/", get_csrf_token, name="csrf_token"),
     path(
         "",
         include(

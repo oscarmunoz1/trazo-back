@@ -414,45 +414,6 @@ class SoilManagementEvent(CommonEvent):
         verbose_name_plural = "Soil Management Events"
 
 
-class BusinessEvent(CommonEvent):
-    """Events related to sales, certifications, compliance, and business operations"""
-    
-    # Business event types
-    HARVEST_SALE = "HS"
-    CERTIFICATION_EARNED = "CE"
-    INSPECTION = "IN"
-    INVENTORY_COUNT = "IC"
-    MARKET_ANALYSIS = "MA"
-    COMPLIANCE_TEST = "CT"
-    CUSTOMER_MEETING = "CM"
-    
-    BUSINESS_TYPE_CHOICES = [
-        (HARVEST_SALE, "Harvest Sale"),
-        (CERTIFICATION_EARNED, "Certification Earned"),
-        (INSPECTION, "Inspection"),
-        (INVENTORY_COUNT, "Inventory Count"),
-        (MARKET_ANALYSIS, "Market Analysis"),
-        (COMPLIANCE_TEST, "Compliance Test"),
-        (CUSTOMER_MEETING, "Customer Meeting"),
-    ]
-    
-    type = models.CharField(
-        max_length=2, choices=BUSINESS_TYPE_CHOICES, default=HARVEST_SALE
-    )
-    sale_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    buyer_information = models.CharField(max_length=200, blank=True)
-    certification_type = models.CharField(max_length=100, blank=True)
-    inspector_name = models.CharField(max_length=100, blank=True)
-    compliance_status = models.CharField(max_length=50, blank=True)  # Pass, Fail, Pending
-    market_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    customer_feedback = models.TextField(blank=True)
-    business_impact = models.CharField(max_length=50, blank=True)  # Positive, Negative, Neutral
-    extra_data = models.JSONField(blank=True, null=True)
-    
-    class Meta:
-        verbose_name = "Business Event"
-        verbose_name_plural = "Business Events"
-
 
 class PestManagementEvent(CommonEvent):
     """Events related to pest monitoring, beneficial insect releases, and IPM practices"""

@@ -35,8 +35,6 @@ class EstablishmentSerializer(ModelSerializer):
             "contact_person",
             "contact_phone",
             "contact_email",
-            "facebook",
-            "instagram",
             "certifications",
             "about",
             "main_activities",
@@ -54,6 +52,12 @@ class EstablishmentSerializer(ModelSerializer):
             "year_established",
             "establishment_type",
             "farming_method",
+            # New operational fields
+            "water_sources",
+            "climate_zone", 
+            "soil_types",
+            "conservation_practices",
+            "irrigation_methods",
         )
 
     def get_parcels(self, establishment):
@@ -133,8 +137,6 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "contact_person",
             "contact_phone",
             "contact_email",
-            "facebook",
-            "instagram",
             "certifications",
             "about",
             "main_activities",
@@ -152,6 +154,12 @@ class UpdateEstablishmentSerializer(ModelSerializer):
             "year_established",
             "establishment_type",
             "farming_method",
+            # New operational fields
+            "water_sources",
+            "climate_zone", 
+            "soil_types",
+            "conservation_practices",
+            "irrigation_methods",
         )
 
     def to_representation(self, instance):
@@ -363,6 +371,10 @@ class RetrieveCompanySerializer(ModelSerializer):
             "is_active",
             "sustainability_metadata",
             "blockchain_subscription_status",
+            # New agricultural compliance fields
+            "legal_structure",
+            "primary_commodities",
+            "sustainability_commitment",
             "establishments",
             "image",
             "subscription",
@@ -454,4 +466,8 @@ class CreateCompanySerializer(ModelSerializer):
             'industry': {'required': False},
             'is_active': {'required': False},
             'sustainability_metadata': {'required': False},
+            # New agricultural compliance fields (optional)
+            'legal_structure': {'required': False},
+            'primary_commodities': {'required': False},
+            'sustainability_commitment': {'required': False},
         }

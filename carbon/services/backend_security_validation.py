@@ -212,7 +212,8 @@ class BackendSecurityValidator:
             # Validate against known project types or allow custom with restrictions
             allowed_sources = [
                 'no_till', 'cover_crop', 'reforestation', 'solar', 'wind', 
-                'methane_capture', 'composting', 'biochar', 'mangrove'
+                'methane_capture', 'composting', 'biochar', 'mangrove',
+                'renewable_energy'  # Added to match frontend options
             ]
             if source_id not in allowed_sources and len(source_id) < 3:
                 validation_result['violations'].append({
@@ -320,11 +321,14 @@ class BackendSecurityValidator:
                 'amount_threshold': 100
             })
         
-        # Project capacity validation
+        # Project capacity validation - only for numeric project IDs
         source_id = data.get('source_id')
         if source_id:
+            # Check if source_id is a numeric project ID or a string source name
             try:
-                project = CarbonOffsetProject.objects.get(id=source_id)
+                # Try to convert to int - if successful, it's a project ID
+                project_id = int(source_id)
+                project = CarbonOffsetProject.objects.get(id=project_id)
                 if amount > project.available_capacity:
                     validation_result['violations'].append({
                         'type': 'insufficient_project_capacity',
@@ -333,12 +337,16 @@ class BackendSecurityValidator:
                         'available_capacity': float(project.available_capacity),
                         'requested_amount': amount
                     })
+            except (ValueError, TypeError):
+                # source_id is a string (like 'reforestation') - skip project capacity check
+                # This is normal for generic offset sources
+                pass
             except CarbonOffsetProject.DoesNotExist:
-                # Project doesn't exist as a formal project - allow but flag for review
+                # Numeric project ID doesn't exist
                 validation_result['warnings'].append({
-                    'type': 'unregistered_project',
-                    'severity': 'low',
-                    'message': 'Offset source is not a registered project',
+                    'type': 'project_not_found',
+                    'severity': 'medium',
+                    'message': f'Carbon offset project with ID {source_id} not found',
                     'source_id': source_id
                 })
     

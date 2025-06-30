@@ -24,9 +24,19 @@ class CertificateGenerator:
 
     def _setup_fonts(self):
         """Set up custom fonts for the certificate."""
-        font_path = os.path.join(settings.STATIC_ROOT, 'fonts')
-        pdfmetrics.registerFont(TTFont('Roboto', os.path.join(font_path, 'Roboto-Regular.ttf')))
-        pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(font_path, 'Roboto-Bold.ttf')))
+        try:
+            font_path = os.path.join(settings.STATIC_ROOT or settings.BASE_DIR, 'fonts')
+            if os.path.exists(os.path.join(font_path, 'Roboto-Regular.ttf')):
+                pdfmetrics.registerFont(TTFont('Roboto', os.path.join(font_path, 'Roboto-Regular.ttf')))
+                pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(font_path, 'Roboto-Bold.ttf')))
+                self.use_custom_fonts = True
+            else:
+                # Fall back to default fonts if custom fonts are not available
+                self.use_custom_fonts = False
+        except Exception as e:
+            # Log the error but continue with default fonts
+            print(f"Warning: Could not load custom fonts, using defaults: {e}")
+            self.use_custom_fonts = False
 
     def generate_certificate(self, purchase: CarbonOffsetPurchase) -> str:
         """
@@ -92,7 +102,7 @@ class CertificateGenerator:
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=self.styles['Heading1'],
-            fontName='Roboto-Bold',
+            fontName='Roboto-Bold' if self.use_custom_fonts else 'Helvetica-Bold',
             fontSize=24,
             spaceAfter=30
         )
