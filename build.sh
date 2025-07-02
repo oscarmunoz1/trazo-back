@@ -1,15 +1,14 @@
-set -o errexit
-pip install --upgrade pip
-pip install poetry
+#!/bin/bash
 
-# Ensure the virtual environment is activated
-source /opt/render/project/src/.venv/bin/activate
+# Install Poetry
+curl -sSL https://install.python-poetry.org | python3 -
+export PATH="/root/.local/bin:$PATH"
 
-poetry env use 3.9
+# Configure Poetry
+poetry config virtualenvs.create false
 
-# Install dependencies using Poetry
-poetry install
+# Install dependencies
+poetry install --no-dev
 
-# Run your Django management commands
-poetry run python manage.py collectstatic --no-input
-poetry run python manage.py migrate
+# Collect static files
+poetry run python manage.py collectstatic --noinput
