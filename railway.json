@@ -1,8 +1,5 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "buildCommand": "pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev"
-  },
   "deploy": {
     "numReplicas": 1,
     "sleepApplication": false,

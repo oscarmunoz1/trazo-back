@@ -1,0 +1,6 @@
+[build]
+builder = "BUILDPACKS"
+
+[deploy]
+healthcheckPath = "/health/"
+healthcheckTimeout = 300 
