@@ -23,6 +23,11 @@ EXPOSE 8000
 
 # Start command - CRITICAL: Use $PORT not hardcoded 8000
 # Move collectstatic to runtime when env vars are available
-CMD python manage.py migrate --settings=backend.settings.prod && \
+CMD echo "=== Starting Django Debug ===" && \
+    python debug_startup.py && \
+    echo "=== Debug Complete, Starting Migration ===" && \
+    python manage.py migrate --settings=backend.settings.prod && \
+    echo "=== Migration Complete, Collecting Static ===" && \
     python manage.py collectstatic --noinput --settings=backend.settings.prod && \
+    echo "=== Static Complete, Starting Gunicorn ===" && \
     gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --log-level debug 
