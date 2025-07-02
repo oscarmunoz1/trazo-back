@@ -35,6 +35,10 @@ def get_csrf_token(request):
         'message': 'CSRF token set successfully'
     })
 
+def simple_test(request):
+    """Simple test endpoint that doesn't require database"""
+    return JsonResponse({"status": "ok", "message": "Django is working"})
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
@@ -52,6 +56,7 @@ urlpatterns = [
     path('api/support/', include('support.urls')),
     path('api/education/', include('education.urls')),
     path("health/", health_check, name="health_check"),
+    path("test/", simple_test, name="simple_test"),  # Simple test endpoint
 ]
 
 if settings.DEBUG:
