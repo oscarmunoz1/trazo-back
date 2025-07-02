@@ -22,8 +22,18 @@ class ReviewsViewSet(viewsets.ModelViewSet):
             return ReviewSerializer
 
     def create(self, request, *args, **kwargs):
-        data = request.data
-        data["scan"] = data["scan_id"]
+        data = request.data.copy()
+        
+        # Handle scan_id if provided
+        if "scan_id" in data:
+            # If it's a web review (starts with 'web-'), remove it as it's not a real scan
+            if isinstance(data["scan_id"], str) and data["scan_id"].startswith("web-"):
+                data.pop("scan_id", None)
+                data.pop("scan", None)
+            else:
+                # Otherwise, treat it as a real scan ID
+                data["scan"] = data.pop("scan_id", None)
+        
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)

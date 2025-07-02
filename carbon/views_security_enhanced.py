@@ -24,7 +24,7 @@ from .services.backend_security_validation import (
     backend_security_validator, SecurityViolationError
 )
 from .services.verification import verification_service
-from .services.certificate import certificate_generator
+from .services.certificate import get_certificate_generator
 from company.models import Establishment
 from history.models import History
 
@@ -306,7 +306,7 @@ def create_secure_carbon_offset(request):
                     verification_status='verified'
                 )
                 
-                certificate_file = certificate_generator.generate_certificate(purchase)
+                certificate_file = get_certificate_generator().generate_certificate(purchase)
                 certificate_url = f"/media/{certificate_file}"
                 
             except Exception as e:

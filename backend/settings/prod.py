@@ -3,6 +3,7 @@
 import os
 from decouple import config
 from backend.settings.base import *
+import dj_database_url
 
 # Explicitly disable debug in production
 DEBUG = False
@@ -12,11 +13,20 @@ SECRET_KEY = config('SECRET_KEY')
 if not SECRET_KEY or len(SECRET_KEY) < 50:
     raise ValueError("Production requires a strong SECRET_KEY with at least 50 characters")
 
+# Database Configuration for Railway
+DATABASES = {
+    'default': dj_database_url.parse(
+        config('DATABASE_URL', default='sqlite:///db.sqlite3')
+    )
+}
+
 ALLOWED_HOSTS = [
     "api.trazo.io",
     "api-staging.trazo.io",
     os.environ.get("LOAD_BALANCER_DNS", "localhost"),
-    os.environ.get("RAILWAY_STATIC_URL", "localhost")
+    os.environ.get("RAILWAY_STATIC_URL", "localhost"),
+    "*.railway.app",
+    "localhost"
 ]
 
 CSRF_TRUSTED_ORIGINS = [

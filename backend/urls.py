@@ -35,26 +35,27 @@ def get_csrf_token(request):
         'message': 'CSRF token set successfully'
     })
 
+def health_check(request):
+    """Health check endpoint for Railway deployment"""
+    return JsonResponse({"status": "healthy", "service": "trazo-backend"})
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
     # Global CSRF token endpoint
     path("api/csrf-token/", get_csrf_token, name="csrf_token"),
-    path(
-        "",
-        include(
-            ("users.urls"),
-        ),
-    ),
-    path("", include("company.urls")),
-    path("", include("product.urls")),
-    path("", include("history.urls")),
-    path("", include("reviews.urls")),
-    path("", include("common.urls")),
-    path("", include("subscriptions.urls")),
-    path('carbon/', include('carbon.urls')),
-    path('support/', include('support.urls')),
-    path('education/', include('education.urls')),
+    path("api/", include("users.urls")),
+    path("api/", include("company.urls")),
+    path("api/", include("product.urls")),
+    path("api/", include("history.urls")),
+    path("api/", include("history.urls_consumer")),  # Consumer API endpoints
+    path("api/", include("reviews.urls")),
+    path("api/", include("common.urls")),
+    path("api/", include("subscriptions.urls")),
+    path('api/carbon/', include('carbon.urls')),
+    path('api/support/', include('support.urls')),
+    path('api/education/', include('education.urls')),
+    path("health/", health_check, name="health_check"),
 ]
 
 if settings.DEBUG:

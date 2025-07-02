@@ -25,17 +25,42 @@ class CertificateGenerator:
     def _setup_fonts(self):
         """Set up custom fonts for the certificate."""
         try:
-            font_path = os.path.join(settings.STATIC_ROOT or settings.BASE_DIR, 'fonts')
-            if os.path.exists(os.path.join(font_path, 'Roboto-Regular.ttf')):
-                pdfmetrics.registerFont(TTFont('Roboto', os.path.join(font_path, 'Roboto-Regular.ttf')))
-                pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(font_path, 'Roboto-Bold.ttf')))
-                self.use_custom_fonts = True
+            # Try multiple possible font paths
+            possible_paths = [
+                os.path.join(settings.BASE_DIR, 'backend', 'static', 'fonts'),
+                os.path.join(settings.BASE_DIR, 'static', 'fonts'),
+                os.path.join(getattr(settings, 'STATIC_ROOT', ''), 'fonts') if getattr(settings, 'STATIC_ROOT', '') else None,
+                '/app/static/fonts',  # Railway deployment path
+            ]
+            
+            font_path = None
+            for path in possible_paths:
+                if path and os.path.exists(path) and os.path.exists(os.path.join(path, 'Roboto-Regular.ttf')):
+                    font_path = path
+                    break
+            
+            if font_path:
+                # Try to register fonts, but don't fail if some are missing
+                try:
+                    if os.path.exists(os.path.join(font_path, 'Roboto-Regular.ttf')):
+                        pdfmetrics.registerFont(TTFont('Roboto', os.path.join(font_path, 'Roboto-Regular.ttf')))
+                    
+                    if os.path.exists(os.path.join(font_path, 'Roboto-Bold.ttf')):
+                        pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(font_path, 'Roboto-Bold.ttf')))
+                    
+                    self.use_custom_fonts = True
+                    print(f"Successfully loaded custom fonts from: {font_path}")
+                except Exception as font_error:
+                    print(f"Warning: Could not register fonts from {font_path}: {font_error}")
+                    self.use_custom_fonts = False
             else:
                 # Fall back to default fonts if custom fonts are not available
+                print("Warning: Roboto fonts not found, using default fonts")
                 self.use_custom_fonts = False
+                
         except Exception as e:
             # Log the error but continue with default fonts
-            print(f"Warning: Could not load custom fonts, using defaults: {e}")
+            print(f"Warning: Font setup failed, using defaults: {e}")
             self.use_custom_fonts = False
 
     def generate_certificate(self, purchase: CarbonOffsetPurchase) -> str:
@@ -198,5 +223,26 @@ class CertificateGenerator:
                 'error': 'Certificate not found'
             }
 
-# Create singleton instance
-certificate_generator = CertificateGenerator() 
+# Lazy initialization to avoid startup errors
+_certificate_generator = None
+
+def get_certificate_generator():
+    """Get or create the certificate generator instance."""
+    global _certificate_generator
+    if _certificate_generator is None:
+        try:
+            _certificate_generator = CertificateGenerator()
+        except Exception as e:
+            print(f"Warning: Could not initialize certificate generator: {e}")
+            # Return a mock generator that fails gracefully
+            class MockCertificateGenerator:
+                def generate_certificate(self, purchase):
+                    raise ValueError("Certificate generation unavailable due to initialization error")
+                def verify_certificate(self, certificate_id):
+                    return {'valid': False, 'error': 'Certificate verification unavailable'}
+            _certificate_generator = MockCertificateGenerator()
+    return _certificate_generator
+
+# Create a function that acts like the old singleton
+def certificate_generator():
+    return get_certificate_generator() 

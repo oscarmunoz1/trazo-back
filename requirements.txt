@@ -43,3 +43,6 @@ django-redis>=5.3.0
 
 # Security
 django-ratelimit>=4.1.0
+
+# OAuth Providers (newly added)
+django-allauth[socialaccount]>=0.51.0

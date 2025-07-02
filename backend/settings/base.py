@@ -387,15 +387,18 @@ AUTH_PASSWORD_VALIDATORS = [
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# The absolute path to the directory where collectstatic will collect static files for deployment.
-STATIC_ROOT = BASE_DIR.parent / "static"
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/4.1/howto/static-files/
 
-# The URL to use when referring to static files (where they will be served from)
-STATIC_URL = "/static/"
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+    os.path.join(BASE_DIR, 'backend', 'static'),
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Simplified static file serving.
-# https://pypi.org/project/whitenoise/
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
@@ -446,7 +449,47 @@ SOCIALACCOUNT_PROVIDERS = {
         "AUTH_PARAMS": {
             "access_type": "online",
         },
-    }
+        "APP": {
+            "client_id": config("GOOGLE_CLIENT_ID", default=""),
+            "secret": config("GOOGLE_CLIENT_SECRET", default=""),
+        },
+    },
+    "facebook": {
+        "METHOD": "oauth2",
+        "SCOPE": [
+            "email",
+            "public_profile",
+        ],
+        "AUTH_PARAMS": {
+            "auth_type": "reauthenticate",
+        },
+        "INIT_PARAMS": {
+            "cookie": True,
+        },
+        "FIELDS": [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+        ],
+        "EXCHANGE_TOKEN": True,
+        "LOCALE_FUNC": "path.to.callable",
+        "VERIFIED_EMAIL": False,
+        "VERSION": "v13.0",
+        "APP": {
+            "client_id": config("FACEBOOK_APP_ID", default=""),
+            "secret": config("FACEBOOK_APP_SECRET", default=""),
+        },
+    },
+    "apple": {
+        "APP": {
+            "client_id": config("APPLE_CLIENT_ID", default=""),
+            "secret": config("APPLE_CLIENT_SECRET", default=""),
+            "key": config("APPLE_KEY_ID", default=""),
+            "certificate_key": config("APPLE_PRIVATE_KEY", default=""),
+        },
+        "SCOPE": ["name", "email"],
+    },
 }
 
 JWT_EXPIRATION_DELTA = timedelta(seconds=20)
