@@ -1,1 +1,1 @@
-web: python manage.py migrate && gunicorn backend.wsgi
+web: poetry run python manage.py migrate && poetry run gunicorn backend.wsgi --bind 0.0.0.0:$PORT
