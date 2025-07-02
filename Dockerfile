@@ -15,12 +15,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Collect static files
-RUN python manage.py collectstatic --noinput --settings=backend.settings.prod || true
+# Create static directory
+RUN mkdir -p /app/staticfiles
 
 # Expose port (Railway will override this with $PORT)
 EXPOSE 8000
 
 # Start command - CRITICAL: Use $PORT not hardcoded 8000
+# Move collectstatic to runtime when env vars are available
 CMD python manage.py migrate --settings=backend.settings.prod && \
+    python manage.py collectstatic --noinput --settings=backend.settings.prod && \
     gunicorn backend.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --log-level debug 
