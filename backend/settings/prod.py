@@ -193,3 +193,57 @@ USE_ICR_SANDBOX = config('USE_ICR_SANDBOX', default=False, cast=bool)  # Product
 AWS_SERVICES_ENABLED = config('AWS_SERVICES_ENABLED', default=True, cast=bool)
 FORCE_AWS_KEY_MANAGEMENT = config('FORCE_AWS_KEY_MANAGEMENT', default=False, cast=bool)
 ENVIRONMENT = config('ENVIRONMENT', default='production')
+
+# Override logging configuration for Railway deployment - Console logging only
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[%(asctime)s] %(levelname)s | %(name)s | "
+            "%(module)s | %(funcName)s | %(lineno)d | %(message)s",
+            "datefmt": "%d/%b/%Y %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "level": "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "null": {
+            "class": "logging.NullHandler",
+        },
+    },
+    "loggers": {
+        "backend": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": True,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "security": {
+            "handlers": ["console"],  # Remove file handler
+            "level": "WARNING",
+            "propagate": False,
+        },
+        "django.security.DisallowedHost": {
+            "handlers": ["null"],
+            "propagate": False,
+        },
+        "": {
+            "handlers": ["console"],
+            "level": "DEBUG",
+            "propagate": True,
+        },
+    },
+}
