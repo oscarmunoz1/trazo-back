@@ -1,5 +1,4 @@
-[build]
-nixpacksConfigPath = ""
-
 [deploy]
-healthcheckPath = "/health/" 
+healthcheckPath = "/health/"
+healthcheckTimeout = 300
+numReplicas = 1 
