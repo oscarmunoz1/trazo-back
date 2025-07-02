@@ -1,0 +1,16 @@
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile*
+.dockerignore
+*.dockerfile
+
+# Keep for local development but ignore in Railway
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+logs/
+*.log 
