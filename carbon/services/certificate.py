@@ -8,8 +8,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from ..models import CarbonOffsetPurchase, CarbonOffsetProject
 from .verification import verification_service
 
@@ -20,48 +18,6 @@ class CertificateGenerator:
         self.styles = getSampleStyleSheet()
         self.production_mode = getattr(settings, 'DEBUG', True) == False
         self.require_blockchain_verification = self.production_mode or getattr(settings, 'FORCE_BLOCKCHAIN_VERIFICATION', False)
-        self._setup_fonts()
-
-    def _setup_fonts(self):
-        """Set up custom fonts for the certificate."""
-        try:
-            # Try multiple possible font paths
-            possible_paths = [
-                os.path.join(settings.BASE_DIR, 'backend', 'static', 'fonts'),
-                os.path.join(settings.BASE_DIR, 'static', 'fonts'),
-                os.path.join(getattr(settings, 'STATIC_ROOT', ''), 'fonts') if getattr(settings, 'STATIC_ROOT', '') else None,
-                '/app/static/fonts',  # Railway deployment path
-            ]
-            
-            font_path = None
-            for path in possible_paths:
-                if path and os.path.exists(path) and os.path.exists(os.path.join(path, 'Roboto-Regular.ttf')):
-                    font_path = path
-                    break
-            
-            if font_path:
-                # Try to register fonts, but don't fail if some are missing
-                try:
-                    if os.path.exists(os.path.join(font_path, 'Roboto-Regular.ttf')):
-                        pdfmetrics.registerFont(TTFont('Roboto', os.path.join(font_path, 'Roboto-Regular.ttf')))
-                    
-                    if os.path.exists(os.path.join(font_path, 'Roboto-Bold.ttf')):
-                        pdfmetrics.registerFont(TTFont('Roboto-Bold', os.path.join(font_path, 'Roboto-Bold.ttf')))
-                    
-                    self.use_custom_fonts = True
-                    print(f"Successfully loaded custom fonts from: {font_path}")
-                except Exception as font_error:
-                    print(f"Warning: Could not register fonts from {font_path}: {font_error}")
-                    self.use_custom_fonts = False
-            else:
-                # Fall back to default fonts if custom fonts are not available
-                print("Warning: Roboto fonts not found, using default fonts")
-                self.use_custom_fonts = False
-                
-        except Exception as e:
-            # Log the error but continue with default fonts
-            print(f"Warning: Font setup failed, using defaults: {e}")
-            self.use_custom_fonts = False
 
     def generate_certificate(self, purchase: CarbonOffsetPurchase) -> str:
         """
@@ -99,6 +55,7 @@ class CertificateGenerator:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Certificate generated for purchase {purchase.id} WITHOUT blockchain verification (development mode)")
+        
         # Generate unique filename
         filename = f"certificates/{uuid.uuid4()}.pdf"
         filepath = os.path.join(settings.MEDIA_ROOT, filename)
@@ -127,7 +84,7 @@ class CertificateGenerator:
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=self.styles['Heading1'],
-            fontName='Roboto-Bold' if self.use_custom_fonts else 'Helvetica-Bold',
+            fontName='Helvetica-Bold',  # Use default font only
             fontSize=24,
             spaceAfter=30
         )
@@ -153,7 +110,7 @@ class CertificateGenerator:
         # Create table with details
         table = Table(details, colWidths=[2*inch, 4*inch])
         table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, -1), 'Roboto'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),  # Use default font only
             ('FONTSIZE', (0, 0), (-1, -1), 12),
             ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
@@ -169,7 +126,7 @@ class CertificateGenerator:
         verification_style = ParagraphStyle(
             'Verification',
             parent=self.styles['Normal'],
-            fontName='Roboto',
+            fontName='Helvetica',  # Use default font only
             fontSize=10,
             textColor=colors.grey
         )
