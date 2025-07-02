@@ -1,7 +1,0 @@
-.git
-.gitignore
-.env
-*.pyc
-__pycache__
-terraform/
-!.env.build 
