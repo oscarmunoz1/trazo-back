@@ -84,24 +84,42 @@ EMAIL_USE_TLS = False if os.environ.get("EMAIL_DISABLE_TLS") == "True" else True
 # Use S3 in production
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
-# Override Celery settings for production
-CELERY_BROKER_URL = config('REDIS_URL')
-CELERY_RESULT_BACKEND = config('REDIS_URL')
-CELERY_BROKER_USE_SSL = True
-CELERY_REDIS_BACKEND_USE_SSL = True
+# Redis Configuration - Remove SSL for Railway internal Redis
+REDIS_URL = config('REDIS_URL', default=None)
 
-# Override Redis Cache settings for production
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": config('REDIS_URL'),
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SSL": True,
-            "SSL_CERT_REQS": None,
+# Override Celery settings for production - No SSL for Railway internal Redis
+if REDIS_URL:
+    CELERY_BROKER_URL = REDIS_URL
+    CELERY_RESULT_BACKEND = REDIS_URL
+    # Remove SSL requirements for Railway internal Redis
+    CELERY_BROKER_USE_SSL = False
+    CELERY_REDIS_BACKEND_USE_SSL = False
+else:
+    # Disable Celery if no Redis
+    CELERY_TASK_ALWAYS_EAGER = True
+    CELERY_TASK_STORE_EAGER_RESULT = True
+
+# Override Redis Cache settings for production - No SSL for Railway internal Redis
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": REDIS_URL,
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                # Remove SSL requirements for Railway internal Redis
+                "SSL": False,
+                "CONNECTION_POOL_KWARGS": {"retry_on_timeout": True},
+            }
         }
     }
-}
+else:
+    # Fallback to local memory cache if no Redis
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
 
 # USDA API Configuration - Use environment variables for security
 USDA_NASS_API_KEY = os.environ.get('USDA_NASS_API_KEY', None)
