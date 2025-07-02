@@ -3,6 +3,7 @@ docker-compose.*.yml
 Dockerfile*
 .dockerignore
 *.dockerfile
+nixpacks.toml
 
 # Keep for local development but ignore in Railway
 .venv/

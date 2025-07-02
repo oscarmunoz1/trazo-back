@@ -1,5 +1,0 @@
-[build]
-cmd = "pip install poetry && poetry config virtualenvs.create false && poetry install --no-dev"
-
-[start]
-cmd = "poetry run python manage.py migrate --verbosity=2 && poetry run python manage.py collectstatic --noinput && poetry run gunicorn backend.wsgi --bind 0.0.0.0:$PORT --workers 1 --log-level debug" 
