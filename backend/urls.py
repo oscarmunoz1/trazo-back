@@ -35,10 +35,6 @@ def get_csrf_token(request):
         'message': 'CSRF token set successfully'
     })
 
-def health_check(request):
-    """Health check endpoint for Railway deployment"""
-    return JsonResponse({"status": "healthy", "service": "trazo-backend"})
-
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("accounts/", include("allauth.urls")),
